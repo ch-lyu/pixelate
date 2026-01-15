@@ -233,7 +233,7 @@ export default function Home() {
       setPendingPixel(null);
 
       // Immediately start 60s cooldown (don't wait for refetch)
-      setCooldownRemaining(60);
+      setCooldownRemaining(5);
       refetchCooldown(); // Still refetch to sync with contract
       resetWrite();
     }
@@ -433,7 +433,7 @@ export default function Home() {
             </p>
           ) : (
             <p className="text-[9px] font-bold text-gray-600 uppercase tracking-widest">
-              CLICK TO PLACE · 60S COOLDOWN
+              CLICK TO PLACE · 5S COOLDOWN
             </p>
           )}
         </div>
