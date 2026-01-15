@@ -445,7 +445,7 @@ export default function Home() {
       setMintState('minting');
       console.log('[Pixelate] 🎨 Minting snapshot NFT...');
 
-      const price = mintPrice || parseEther('0.001');
+      const price = mintPrice ?? BigInt(0);
 
       writeSnapshot({
         address: PIXELATE_SNAPSHOTS_ADDRESS,
