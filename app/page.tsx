@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useState, useEffect, useRef } from 'react';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi';
 import { PIXELATE_ADDRESS, PIXELATE_ABI, type Pixel } from './contract';
 
 const GRID_SIZE = 64;
@@ -22,12 +22,71 @@ export default function Home() {
   const [selectedColor, setSelectedColor] = useState(1);
   const [hoveredPixel, setHoveredPixel] = useState<number | null>(null);
   const [pendingPixel, setPendingPixel] = useState<{ index: number; color: number } | null>(null);
+  
+  // Ref to track pending pixel (avoids stale closure in event callback)
+  const pendingPixelRef = useRef<{ index: number; color: number } | null>(null);
+  
+  // Local pixel state for live updates
+  const [localPixels, setLocalPixels] = useState<Pixel[] | null>(null);
 
-  // Read all pixels from the contract
-  const { data: pixelData, isLoading: isLoadingPixels, refetch: refetchPixels } = useReadContract({
+  // Read all pixels from the contract (initial load only)
+  const { data: pixelData, isLoading: isLoadingPixels } = useReadContract({
     address: PIXELATE_ADDRESS,
     abi: PIXELATE_ABI,
     functionName: 'getAllPixels',
+  });
+
+  // Sync contract data to local state on initial load
+  useEffect(() => {
+    if (pixelData && !localPixels) {
+      // Convert readonly array to mutable Pixel array with proper types
+      const converted: Pixel[] = [...pixelData].map((p) => ({
+        color: p.color,
+        lastPlacer: p.lastPlacer,
+        lastPlacedAt: BigInt(p.lastPlacedAt),
+      }));
+      setLocalPixels(converted);
+    }
+  }, [pixelData, localPixels]);
+
+  // Subscribe to PixelPlaced events for live updates
+  useWatchContractEvent({
+    address: PIXELATE_ADDRESS,
+    abi: PIXELATE_ABI,
+    eventName: 'PixelPlaced',
+    onLogs(logs) {
+      logs.forEach((log) => {
+        const { pixelId, color, placer } = log.args as {
+          pixelId: bigint;
+          color: number;
+          placer: `0x${string}`;
+        };
+        
+        const index = Number(pixelId);
+        const x = index % GRID_SIZE;
+        const y = Math.floor(index / GRID_SIZE);
+        
+        console.log(`[Pixelate] 🔴 LIVE: ${shortenAddress(placer)} placed pixel at (${x}, ${y}) color=${color}`);
+        
+        // Update local state with new pixel
+        setLocalPixels((prev) => {
+          if (!prev) return prev;
+          const updated = [...prev];
+          updated[index] = {
+            color,
+            lastPlacer: placer,
+            lastPlacedAt: BigInt(Math.floor(Date.now() / 1000)),
+          };
+          return updated;
+        });
+        
+        // Clear pending if this was our pixel (use ref to avoid stale closure)
+        if (pendingPixelRef.current?.index === index) {
+          pendingPixelRef.current = null;
+          setPendingPixel(null);
+        }
+      });
+    },
   });
 
   // Read user's remaining cooldown
@@ -68,6 +127,7 @@ export default function Home() {
   useEffect(() => {
     if (isWriteError && writeError) {
       console.error('[Pixelate] ❌ Write error:', writeError.message);
+      pendingPixelRef.current = null;
       setPendingPixel(null);
     }
   }, [isWriteError, writeError]);
@@ -75,26 +135,28 @@ export default function Home() {
   useEffect(() => {
     if (txError) {
       console.error('[Pixelate] ❌ Transaction error:', txError.message);
+      pendingPixelRef.current = null;
       setPendingPixel(null);
     }
   }, [txError]);
 
-  // Convert contract data to color array for rendering
-  const pixels = pixelData
-    ? [...pixelData].map((p) => p.color)
+  // Convert local state to color array for rendering
+  const pixels = localPixels
+    ? localPixels.map((p) => p.color)
     : Array(GRID_SIZE * GRID_SIZE).fill(0);
 
   // Store full pixel data for hover info
-  const pixelInfo = pixelData ? [...pixelData] : undefined;
+  const pixelInfo = localPixels;
 
-  // Log when pixels are loaded from chain
+  // Log when pixels are loaded from chain (only once on initial load)
   useEffect(() => {
-    if (pixelData) {
+    if (pixelData && localPixels === null) {
       const allPixels = [...pixelData];
       const placedPixels = allPixels.filter(
         (p) => p.lastPlacer !== '0x0000000000000000000000000000000000000000'
       );
       console.log(`[Pixelate] 📦 Loaded canvas: ${placedPixels.length} pixels placed`);
+      console.log(`[Pixelate] 👂 Listening for live pixel updates...`);
       
       // Log first few placed pixels
       placedPixels.slice(0, 5).forEach((p) => {
@@ -107,20 +169,16 @@ export default function Home() {
         console.log(`  ... and ${placedPixels.length - 5} more`);
       }
     }
-  }, [pixelData]);
+  }, [pixelData, localPixels]);
 
-  // Refetch pixels after successful transaction
+  // Handle successful transaction (events handle pixel updates, we just refetch cooldown)
   useEffect(() => {
-    if (isConfirmed && pendingPixel) {
-      const x = pendingPixel.index % GRID_SIZE;
-      const y = Math.floor(pendingPixel.index / GRID_SIZE);
-      console.log(`[Pixelate] ✅ ${shortenAddress(address!)} placed pixel at (${x}, ${y}) - tx: ${txHash?.slice(0, 10)}...`);
-      refetchPixels();
+    if (isConfirmed) {
+      console.log(`[Pixelate] ✅ Transaction confirmed: ${txHash?.slice(0, 10)}...`);
       refetchCooldown();
-      setPendingPixel(null);
       resetWrite();
     }
-  }, [isConfirmed, pendingPixel, address, txHash, refetchPixels, refetchCooldown, resetWrite]);
+  }, [isConfirmed, txHash, refetchCooldown, resetWrite]);
 
   const handlePixelClick = (index: number) => {
     if (!isConnected) {
@@ -142,7 +200,9 @@ export default function Home() {
 
     console.log(`[Pixelate] 🎨 ${shortenAddress(address!)} placing pixel at (${x}, ${y}) with color ${selectedColor}`);
 
-    setPendingPixel({ index, color: selectedColor });
+    const pending = { index, color: selectedColor };
+    pendingPixelRef.current = pending;
+    setPendingPixel(pending);
 
     writeContract({
       address: PIXELATE_ADDRESS,
@@ -221,8 +281,11 @@ export default function Home() {
             return (
               <div
                 key={i}
-                className={`w-2 h-2 cursor-pointer transition-opacity hover:opacity-75 ${isPending ? 'animate-pulse' : ''}`}
-                style={{ backgroundColor: PALETTE[displayColor] || PALETTE[0] }}
+                className={`w-2 h-2 cursor-pointer hover:opacity-75 ${isPending ? 'animate-pulse' : ''}`}
+                style={{ 
+                  backgroundColor: PALETTE[displayColor] || PALETTE[0],
+                  transition: 'opacity 150ms ease-out',
+                }}
                 onClick={() => handlePixelClick(i)}
                 onMouseEnter={() => setHoveredPixel(i)}
                 onMouseLeave={() => setHoveredPixel(null)}
