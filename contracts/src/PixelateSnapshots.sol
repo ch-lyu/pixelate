@@ -27,9 +27,11 @@ contract PixelateSnapshots is ERC721, ERC721URIStorage, Ownable {
     mapping(uint256 => Snapshot) public snapshots;
     mapping(uint256 => uint256) public tokenToSnapshot;
     mapping(bytes32 => uint256) public hashToSnapshot; // Prevent duplicate snapshots
+    mapping(address => uint256[]) private _userSnapshots; // Track snapshots per user
 
     error SnapshotAlreadyExists(bytes32 canvasHash, uint256 existingSnapshotId);
     error SnapshotDoesNotExist(uint256 snapshotId);
+    error OnlyCreatorCanMint(address creator, address caller);
     error InsufficientPayment(uint256 required, uint256 provided);
     error InvalidImageURI();
     error WithdrawFailed();
@@ -78,6 +80,7 @@ contract PixelateSnapshots is ERC721, ERC721URIStorage, Ownable {
         });
 
         hashToSnapshot[canvasHash] = snapshotId;
+        _userSnapshots[msg.sender].push(snapshotId);
 
         emit SnapshotCreated(
             snapshotId,
@@ -88,12 +91,15 @@ contract PixelateSnapshots is ERC721, ERC721URIStorage, Ownable {
         );
     }
 
-    /// @notice Mint an NFT of an existing snapshot
+    /// @notice Mint an NFT of an existing snapshot (creator only)
     /// @param snapshotId The snapshot to mint
     /// @return tokenId The minted token ID
     function mintSnapshot(uint256 snapshotId) external payable returns (uint256 tokenId) {
         if (snapshots[snapshotId].blockNumber == 0) {
             revert SnapshotDoesNotExist(snapshotId);
+        }
+        if (msg.sender != snapshots[snapshotId].creator) {
+            revert OnlyCreatorCanMint(snapshots[snapshotId].creator, msg.sender);
         }
         if (msg.value < mintPrice) {
             revert InsufficientPayment(mintPrice, msg.value);
@@ -137,6 +143,7 @@ contract PixelateSnapshots is ERC721, ERC721URIStorage, Ownable {
         });
 
         hashToSnapshot[canvasHash] = snapshotId;
+        _userSnapshots[msg.sender].push(snapshotId);
 
         emit SnapshotCreated(
             snapshotId,
@@ -168,6 +175,16 @@ contract PixelateSnapshots is ERC721, ERC721URIStorage, Ownable {
     /// @notice Get the snapshot ID for a token
     function getTokenSnapshot(uint256 tokenId) external view returns (uint256) {
         return tokenToSnapshot[tokenId];
+    }
+
+    /// @notice Get all snapshot IDs created by a user (for library UI)
+    function getUserSnapshots(address user) external view returns (uint256[] memory) {
+        return _userSnapshots[user];
+    }
+
+    /// @notice Get the number of snapshots a user has created
+    function getUserSnapshotCount(address user) external view returns (uint256) {
+        return _userSnapshots[user].length;
     }
 
     /// @notice Get total number of snapshots created
