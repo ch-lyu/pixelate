@@ -5,6 +5,7 @@ import { useAccount, useReadContract, useWriteContract, useWaitForTransactionRec
 import { baseSepolia } from 'wagmi/chains';
 import { parseEther } from 'viem';
 import { Camera, X } from 'lucide-react';
+import sdk from '@farcaster/miniapp-sdk';
 import { PIXELATE_ADDRESS, PIXELATE_ABI, PIXELATE_SNAPSHOTS_ADDRESS, PIXELATE_SNAPSHOTS_ABI, type Pixel } from './contract';
 import { PALETTE, pixelsToBlob } from './utils';
 import { uploadToIPFS } from './utils/ipfs';
@@ -64,6 +65,13 @@ export default function Home() {
       switchChain({ chainId: baseSepolia.id });
     }
   }, [isConnected, chainId, switchChain]);
+
+  // Signal to MiniKit that the app is ready
+  useEffect(() => {
+    sdk.actions.ready({}).catch(() => {
+      // Not running in a mini app context, ignore
+    });
+  }, []);
 
   // Local pixel state for live updates
   const [localPixels, setLocalPixels] = useState<Pixel[] | null>(null);
