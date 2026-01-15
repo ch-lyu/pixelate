@@ -23,117 +23,75 @@ contract PixelateSnapshotsTest is Test {
     // Allow receiving ETH for withdraw test
     receive() external payable {}
 
-    function test_CreateSnapshot() public {
+    function test_CreateAndMint() public {
+        vm.deal(alice, 1 ether);
         vm.prank(alice);
-        uint256 snapshotId = snapshots.createSnapshot(SAMPLE_URI);
+        (uint256 snapshotId, uint256 tokenId) = snapshots.createAndMint{value: 0.001 ether}(SAMPLE_URI);
 
         assertEq(snapshotId, 1);
+        assertEq(tokenId, 0);
+        assertEq(snapshots.ownerOf(tokenId), alice);
         assertEq(snapshots.totalSnapshots(), 1);
-
-        PixelateSnapshots.Snapshot memory snap = snapshots.getSnapshot(snapshotId);
-        assertEq(snap.creator, alice);
-        assertEq(snap.imageURI, SAMPLE_URI);
-        assertEq(snap.canvasHash, pixelate.getCanvasHash());
+        assertEq(snapshots.totalMinted(), 1);
+        assertEq(snapshots.tokenURI(tokenId), SAMPLE_URI);
+        assertEq(snapshots.getTokenSnapshot(tokenId), snapshotId);
     }
 
-    function test_CreateSnapshot_EmitsEvent() public {
+    function test_CreateAndMint_EmitsEvents() public {
         bytes32 canvasHash = pixelate.getCanvasHash();
 
+        vm.deal(alice, 1 ether);
         vm.prank(alice);
+        
         vm.expectEmit(true, true, false, true);
         emit PixelateSnapshots.SnapshotCreated(1, canvasHash, alice, block.number, block.timestamp);
-        snapshots.createSnapshot(SAMPLE_URI);
+        vm.expectEmit(true, true, true, true);
+        emit PixelateSnapshots.SnapshotMinted(0, 1, alice);
+        
+        snapshots.createAndMint{value: 0.001 ether}(SAMPLE_URI);
     }
 
-    function test_CreateSnapshot_RevertOnDuplicate() public {
+    function test_CreateAndMint_RevertOnDuplicate() public {
+        vm.deal(alice, 1 ether);
         vm.prank(alice);
-        snapshots.createSnapshot(SAMPLE_URI);
+        snapshots.createAndMint{value: 0.001 ether}(SAMPLE_URI);
 
         bytes32 canvasHash = pixelate.getCanvasHash();
 
+        vm.deal(bob, 1 ether);
         vm.prank(bob);
         vm.expectRevert(abi.encodeWithSelector(
             PixelateSnapshots.SnapshotAlreadyExists.selector,
             canvasHash,
             1
         ));
-        snapshots.createSnapshot("ipfs://different");
+        snapshots.createAndMint{value: 0.001 ether}("ipfs://different");
     }
 
-    function test_CreateSnapshot_AllowsNewAfterCanvasChange() public {
+    function test_CreateAndMint_AllowsNewAfterCanvasChange() public {
+        vm.deal(alice, 1 ether);
         vm.prank(alice);
-        snapshots.createSnapshot(SAMPLE_URI);
+        snapshots.createAndMint{value: 0.001 ether}(SAMPLE_URI);
 
         // Change canvas
         vm.prank(alice);
         pixelate.placePixel(0, 0, 5);
 
         // Should succeed with new canvas state
+        vm.deal(bob, 1 ether);
         vm.prank(bob);
-        uint256 snapshotId = snapshots.createSnapshot("ipfs://new");
+        (uint256 snapshotId, ) = snapshots.createAndMint{value: 0.001 ether}("ipfs://new");
         assertEq(snapshotId, 2);
     }
 
-    function test_CreateSnapshot_RevertOnEmptyURI() public {
+    function test_CreateAndMint_RevertOnEmptyURI() public {
+        vm.deal(alice, 1 ether);
         vm.prank(alice);
         vm.expectRevert(PixelateSnapshots.InvalidImageURI.selector);
-        snapshots.createSnapshot("");
+        snapshots.createAndMint{value: 0.001 ether}("");
     }
 
-    function test_MintSnapshot() public {
-        vm.prank(alice);
-        uint256 snapshotId = snapshots.createSnapshot(SAMPLE_URI);
-
-        vm.deal(alice, 1 ether);
-        vm.prank(alice);
-        uint256 tokenId = snapshots.mintSnapshot{value: 0.001 ether}(snapshotId);
-
-        assertEq(tokenId, 0);
-        assertEq(snapshots.ownerOf(tokenId), alice);
-        assertEq(snapshots.tokenURI(tokenId), SAMPLE_URI);
-        assertEq(snapshots.getTokenSnapshot(tokenId), snapshotId);
-        assertEq(snapshots.totalMinted(), 1);
-    }
-
-    function test_MintSnapshot_EmitsEvent() public {
-        vm.prank(alice);
-        uint256 snapshotId = snapshots.createSnapshot(SAMPLE_URI);
-
-        vm.deal(alice, 1 ether);
-        vm.prank(alice);
-        vm.expectEmit(true, true, true, true);
-        emit PixelateSnapshots.SnapshotMinted(0, snapshotId, alice);
-        snapshots.mintSnapshot{value: 0.001 ether}(snapshotId);
-    }
-
-    function test_MintSnapshot_RevertOnNonCreator() public {
-        vm.prank(alice);
-        uint256 snapshotId = snapshots.createSnapshot(SAMPLE_URI);
-
-        vm.deal(bob, 1 ether);
-        vm.prank(bob);
-        vm.expectRevert(abi.encodeWithSelector(
-            PixelateSnapshots.OnlyCreatorCanMint.selector,
-            alice,
-            bob
-        ));
-        snapshots.mintSnapshot{value: 0.001 ether}(snapshotId);
-    }
-
-    function test_MintSnapshot_RevertOnNonexistent() public {
-        vm.deal(alice, 1 ether);
-        vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(
-            PixelateSnapshots.SnapshotDoesNotExist.selector,
-            999
-        ));
-        snapshots.mintSnapshot{value: 0.001 ether}(999);
-    }
-
-    function test_MintSnapshot_RevertOnInsufficientPayment() public {
-        vm.prank(alice);
-        uint256 snapshotId = snapshots.createSnapshot(SAMPLE_URI);
-
+    function test_CreateAndMint_RevertOnInsufficientPayment() public {
         vm.deal(alice, 1 ether);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(
@@ -141,17 +99,37 @@ contract PixelateSnapshotsTest is Test {
             0.001 ether,
             0.0005 ether
         ));
-        snapshots.mintSnapshot{value: 0.0005 ether}(snapshotId);
+        snapshots.createAndMint{value: 0.0005 ether}(SAMPLE_URI);
+    }
+
+    function test_GetSnapshot() public {
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        (uint256 snapshotId, ) = snapshots.createAndMint{value: 0.001 ether}(SAMPLE_URI);
+
+        PixelateSnapshots.Snapshot memory snap = snapshots.getSnapshot(snapshotId);
+        assertEq(snap.creator, alice);
+        assertEq(snap.imageURI, SAMPLE_URI);
+        assertEq(snap.canvasHash, pixelate.getCanvasHash());
+    }
+
+    function test_GetSnapshot_RevertOnNonexistent() public {
+        vm.expectRevert(abi.encodeWithSelector(
+            PixelateSnapshots.SnapshotDoesNotExist.selector,
+            999
+        ));
+        snapshots.getSnapshot(999);
     }
 
     function test_GetUserSnapshots() public {
+        vm.deal(alice, 1 ether);
         vm.startPrank(alice);
-        uint256 snapshotId1 = snapshots.createSnapshot(SAMPLE_URI);
+        (uint256 snapshotId1, ) = snapshots.createAndMint{value: 0.001 ether}(SAMPLE_URI);
 
         // Change canvas to allow new snapshot
         pixelate.placePixel(0, 0, 5);
         vm.warp(block.timestamp + 61);
-        uint256 snapshotId2 = snapshots.createSnapshot("ipfs://second");
+        (uint256 snapshotId2, ) = snapshots.createAndMint{value: 0.001 ether}("ipfs://second");
         vm.stopPrank();
 
         uint256[] memory aliceSnapshots = snapshots.getUserSnapshots(alice);
@@ -164,28 +142,17 @@ contract PixelateSnapshotsTest is Test {
     }
 
     function test_GetUserSnapshotCount() public {
+        vm.deal(alice, 1 ether);
         vm.startPrank(alice);
-        snapshots.createSnapshot(SAMPLE_URI);
+        snapshots.createAndMint{value: 0.001 ether}(SAMPLE_URI);
 
         pixelate.placePixel(0, 0, 5);
         vm.warp(block.timestamp + 61);
-        snapshots.createSnapshot("ipfs://second");
+        snapshots.createAndMint{value: 0.001 ether}("ipfs://second");
         vm.stopPrank();
 
         assertEq(snapshots.getUserSnapshotCount(alice), 2);
         assertEq(snapshots.getUserSnapshotCount(bob), 0);
-    }
-
-    function test_CreateAndMint() public {
-        vm.deal(alice, 1 ether);
-        vm.prank(alice);
-        (uint256 snapshotId, uint256 tokenId) = snapshots.createAndMint{value: 0.001 ether}(SAMPLE_URI);
-
-        assertEq(snapshotId, 1);
-        assertEq(tokenId, 0);
-        assertEq(snapshots.ownerOf(tokenId), alice);
-        assertEq(snapshots.totalSnapshots(), 1);
-        assertEq(snapshots.totalMinted(), 1);
     }
 
     function test_SetMintPrice() public {
@@ -200,12 +167,9 @@ contract PixelateSnapshotsTest is Test {
     }
 
     function test_Withdraw() public {
-        vm.prank(alice);
-        uint256 snapshotId = snapshots.createSnapshot(SAMPLE_URI);
-
         vm.deal(alice, 1 ether);
         vm.prank(alice);
-        snapshots.mintSnapshot{value: 0.001 ether}(snapshotId);
+        snapshots.createAndMint{value: 0.001 ether}(SAMPLE_URI);
 
         uint256 balanceBefore = owner.balance;
         snapshots.withdraw();

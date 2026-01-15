@@ -56,65 +56,6 @@ contract PixelateSnapshots is ERC721, ERC721URIStorage, Ownable {
         PIXELATE = Pixelate(_pixelate);
     }
 
-    /// @notice Create a new snapshot of the current canvas state
-    /// @param imageURI IPFS URI of the rendered canvas image
-    /// @return snapshotId The ID of the created snapshot
-    function createSnapshot(string calldata imageURI) external returns (uint256 snapshotId) {
-        if (bytes(imageURI).length == 0) revert InvalidImageURI();
-
-        bytes32 canvasHash = PIXELATE.getCanvasHash();
-
-        // Check if this exact canvas state was already snapshotted
-        if (hashToSnapshot[canvasHash] != 0) {
-            revert SnapshotAlreadyExists(canvasHash, hashToSnapshot[canvasHash]);
-        }
-
-        snapshotId = ++_nextSnapshotId;
-
-        snapshots[snapshotId] = Snapshot({
-            blockNumber: block.number,
-            timestamp: block.timestamp,
-            canvasHash: canvasHash,
-            imageURI: imageURI,
-            creator: msg.sender
-        });
-
-        hashToSnapshot[canvasHash] = snapshotId;
-        _userSnapshots[msg.sender].push(snapshotId);
-
-        emit SnapshotCreated(
-            snapshotId,
-            canvasHash,
-            msg.sender,
-            block.number,
-            block.timestamp
-        );
-    }
-
-    /// @notice Mint an NFT of an existing snapshot (creator only)
-    /// @param snapshotId The snapshot to mint
-    /// @return tokenId The minted token ID
-    function mintSnapshot(uint256 snapshotId) external payable returns (uint256 tokenId) {
-        if (snapshots[snapshotId].blockNumber == 0) {
-            revert SnapshotDoesNotExist(snapshotId);
-        }
-        if (msg.sender != snapshots[snapshotId].creator) {
-            revert OnlyCreatorCanMint(snapshots[snapshotId].creator, msg.sender);
-        }
-        if (msg.value < mintPrice) {
-            revert InsufficientPayment(mintPrice, msg.value);
-        }
-
-        tokenId = _nextTokenId++;
-
-        _safeMint(msg.sender, tokenId);
-        _setTokenURI(tokenId, snapshots[snapshotId].imageURI);
-
-        tokenToSnapshot[tokenId] = snapshotId;
-
-        emit SnapshotMinted(tokenId, snapshotId, msg.sender);
-    }
-
     /// @notice Create a snapshot and mint it in one transaction
     /// @param imageURI IPFS URI of the rendered canvas image
     /// @return snapshotId The created snapshot ID

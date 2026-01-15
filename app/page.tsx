@@ -30,12 +30,11 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 type MintState = 'idle' | 'uploading' | 'minting' | 'success' | 'error';
 
-// Local snapshot stored in memory
+// Local snapshot (stored in localStorage)
 interface LocalSnapshot {
   id: string;
   dataUrl: string;
   timestamp: number;
-  pixelColors: number[];
 }
 
 export default function Home() {
@@ -47,11 +46,9 @@ export default function Home() {
   const [showGrid, setShowGrid] = useState(true);
   const [zoom, setZoom] = useState(1);
 
-  // Local snapshots (stored in memory, not on chain yet)
+  // Local snapshots (persisted in localStorage)
   const [localSnapshots, setLocalSnapshots] = useState<LocalSnapshot[]>([]);
   const [selectedSnapshot, setSelectedSnapshot] = useState<LocalSnapshot | null>(null);
-  
-  // Minting state (for when user clicks mint on a snapshot)
   const [mintState, setMintState] = useState<MintState>('idle');
   const [mintError, setMintError] = useState<string | null>(null);
 
@@ -74,6 +71,35 @@ export default function Home() {
     abi: PIXELATE_SNAPSHOTS_ABI,
     functionName: 'mintPrice',
   });
+
+  // Load local snapshots from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && address) {
+      const storageKey = `pixelate-snapshots-${address}`;
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved) as LocalSnapshot[];
+          setLocalSnapshots(parsed);
+          console.log(`[Pixelate] 📂 Loaded ${parsed.length} local snapshots`);
+        } catch (e) {
+          console.error('[Pixelate] Failed to parse saved snapshots:', e);
+        }
+      }
+    }
+  }, [address]);
+
+  // Save local snapshots to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined' && address) {
+      const storageKey = `pixelate-snapshots-${address}`;
+      if (localSnapshots.length > 0) {
+        localStorage.setItem(storageKey, JSON.stringify(localSnapshots));
+      } else {
+        localStorage.removeItem(storageKey);
+      }
+    }
+  }, [localSnapshots, address]);
 
   // Sync contract data to local state on initial load
   useEffect(() => {
@@ -350,17 +376,21 @@ export default function Home() {
     
     try {
       const blob = await pixelsToBlob(pixels);
-      const dataUrl = URL.createObjectURL(blob);
-      
-      const snapshot: LocalSnapshot = {
-        id: `snap-${Date.now()}`,
-        dataUrl,
-        timestamp: Date.now(),
-        pixelColors: [...pixels],
+      // Convert blob to base64 for localStorage persistence
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        
+        const snapshot: LocalSnapshot = {
+          id: `snap-${Date.now()}`,
+          dataUrl,
+          timestamp: Date.now(),
+        };
+        
+        setLocalSnapshots(prev => [snapshot, ...prev].slice(0, 10)); // Keep max 10 snapshots
+        console.log('[Pixelate] 📸 Snapshot saved locally');
       };
-      
-      setLocalSnapshots(prev => [snapshot, ...prev].slice(0, 10)); // Keep max 10 snapshots
-      console.log('[Pixelate] 📸 Snapshot saved locally');
+      reader.readAsDataURL(blob);
     } catch (error) {
       console.error('[Pixelate] ❌ Capture error:', error);
     }
@@ -533,36 +563,48 @@ export default function Home() {
             </div>
           )}
 
-          {/* Snapshot Controls - shown when viewing a snapshot */}
-          {selectedSnapshot && (
-            <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-[#0a0a0a] px-4 py-2 rounded border border-[#333]">
-              <span className="pixel-font text-[8px] text-gray-400">
-                {formatTimestamp(selectedSnapshot.timestamp)}
-              </span>
+          {/* Canvas Controls - below the canvas */}
+          <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-[#0a0a0a] px-4 py-2 rounded border border-[#333]">
+            {selectedSnapshot ? (
+              /* Snapshot view controls */
+              <>
+                <span className="pixel-font text-[8px] text-gray-400">
+                  {formatTimestamp(Number(selectedSnapshot.timestamp))}
+                </span>
+                <button
+                  onClick={() => setSelectedSnapshot(null)}
+                  className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded pixel-font text-[8px] text-white transition-colors"
+                >
+                  ← LIVE
+                </button>
+                <button
+                  onClick={() => handleMint(selectedSnapshot)}
+                  disabled={!isConnected || isMintProcessing}
+                  className={`px-3 py-1 rounded pixel-font text-[8px] transition-colors ${
+                    isMintProcessing
+                      ? 'bg-yellow-500/20 text-yellow-400 cursor-wait'
+                      : mintState === 'success'
+                      ? 'bg-green-500/20 text-green-400'
+                      : 'bg-[#87CEEB]/20 hover:bg-[#87CEEB]/30 text-[#87CEEB]'
+                  } ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {mintState === 'uploading' ? '⏳ UPLOADING...' : 
+                   mintState === 'minting' ? '⏳ MINTING...' : 
+                   mintState === 'success' ? '✓ MINTED!' : 
+                   '🎨 MINT NFT'}
+                </button>
+              </>
+            ) : (
+              /* Live view control - SNAP button */
               <button
-                onClick={() => setSelectedSnapshot(null)}
-                className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded pixel-font text-[8px] text-white transition-colors"
+                onClick={handleCapture}
+                className="px-4 py-2 bg-[#262626] hover:bg-[#333] rounded pixel-font text-[8px] text-[#87CEEB] transition-colors flex items-center gap-2"
               >
-                ← LIVE
+                <Camera className="w-4 h-4" />
+                SNAP
               </button>
-              <button
-                onClick={() => handleMint(selectedSnapshot)}
-                disabled={!isConnected || isMintProcessing}
-                className={`px-3 py-1 rounded pixel-font text-[8px] transition-colors ${
-                  isMintProcessing
-                    ? 'bg-yellow-500/20 text-yellow-400 cursor-wait'
-                    : mintState === 'success'
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-[#87CEEB]/20 hover:bg-[#87CEEB]/30 text-[#87CEEB]'
-                } ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {mintState === 'uploading' ? '⏳ UPLOADING...' : 
-                 mintState === 'minting' ? '⏳ MINTING...' : 
-                 mintState === 'success' ? '✓ MINTED!' : 
-                 '🎨 MINT NFT'}
-              </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </main>
 
@@ -642,29 +684,20 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[#0a0a0a] border-t border-white/10 px-6 py-4 z-40">
-        <div className="flex items-center gap-4">
-          {/* Capture Button */}
-          <button
-            onClick={handleCapture}
-            disabled={!!selectedSnapshot}
-            className={`flex-shrink-0 w-16 h-16 rounded border-2 border-dashed border-white/30 hover:border-[#87CEEB] transition-colors flex items-center justify-center ${
-              selectedSnapshot ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-            }`}
-            title="Capture Snapshot"
-          >
-            <Camera className="w-6 h-6 text-gray-400" />
-          </button>
-
-          {/* Snapshots */}
-          {localSnapshots.length > 0 && (
+      {/* Bottom Action Bar - Only show when there are snapshots */}
+      {localSnapshots.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-[#0a0a0a] border-t border-white/10 px-6 py-4 z-40">
+          <div className="flex items-center gap-4">
+            {/* Snapshots */}
             <div className="flex gap-3 overflow-x-auto pb-1 flex-1">
               {localSnapshots.map((snap) => (
-                <button
+                <div
                   key={snap.id}
                   onClick={() => setSelectedSnapshot(snap)}
-                  className={`flex-shrink-0 relative group ${
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && setSelectedSnapshot(snap)}
+                  className={`flex-shrink-0 relative group cursor-pointer ${
                     selectedSnapshot?.id === snap.id
                       ? 'ring-2 ring-[#87CEEB] ring-offset-2 ring-offset-[#0a0a0a]'
                       : ''
@@ -676,7 +709,7 @@ export default function Home() {
                     className="w-16 h-16 rounded border border-white/20 hover:border-[#87CEEB] transition-colors pixelated"
                   />
                   {/* Timestamp overlay on hover */}
-                  <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded">
+                  <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded pointer-events-none">
                     <span className="text-[7px] text-white text-center px-1">
                       {new Date(snap.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -694,27 +727,20 @@ export default function Home() {
                   >
                     <X className="w-2.5 h-2.5 text-white" />
                   </button>
-                </button>
+                </div>
               ))}
             </div>
-          )}
-
-          {/* Empty state text */}
-          {localSnapshots.length === 0 && (
-            <span className="pixel-font text-[9px] text-gray-600">
-              Click the camera to capture a snapshot
-            </span>
+          </div>
+          
+          {/* Mint error message */}
+          {mintState === 'error' && mintError && (
+            <div className="mt-2 p-2 bg-red-500/10 border border-red-500/30 rounded text-[8px] text-red-400">
+              {mintError.slice(0, 100)}...
+              <button onClick={resetMintState} className="ml-2 underline">Dismiss</button>
+            </div>
           )}
         </div>
-        
-        {/* Mint error message */}
-        {mintState === 'error' && mintError && (
-          <div className="mt-2 p-2 bg-red-500/10 border border-red-500/30 rounded text-[8px] text-red-400">
-            {mintError.slice(0, 100)}...
-            <button onClick={resetMintState} className="ml-2 underline">Dismiss</button>
-          </div>
-        )}
-      </div>
+      )}
     </>
   );
 }

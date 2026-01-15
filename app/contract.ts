@@ -275,21 +275,7 @@ export const PIXELATE_SNAPSHOTS_ABI = [
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
   },
-  // Core functions
-  {
-    type: 'function',
-    name: 'createSnapshot',
-    inputs: [{ name: 'imageURI', type: 'string' }],
-    outputs: [{ name: 'snapshotId', type: 'uint256' }],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    name: 'mintSnapshot',
-    inputs: [{ name: 'snapshotId', type: 'uint256' }],
-    outputs: [{ name: 'tokenId', type: 'uint256' }],
-    stateMutability: 'payable',
-  },
+  // Core function - creates snapshot and mints NFT in one transaction
   {
     type: 'function',
     name: 'createAndMint',
