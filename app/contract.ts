@@ -1,4 +1,8 @@
-export const PIXELATE_ADDRESS = '0x41BC2c72ED909B26a3FA5b5791976C67e39C1B0D' as const;
+import { getAddress } from 'viem';
+
+// Deployed contract on Base Sepolia
+// https://sepolia.basescan.org/address/0x38fcb3c3872422322c673f3320e379075301db72
+export const PIXELATE_ADDRESS = getAddress('0x38fcB3c3872422322C673F3320e379075301dB72');
 
 export const PIXELATE_ABI = [
   {
@@ -30,6 +34,54 @@ export const PIXELATE_ABI = [
         ],
       },
     ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getAllPixels',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple[]',
+        components: [
+          { name: 'color', type: 'uint8' },
+          { name: 'lastPlacer', type: 'address' },
+          { name: 'lastPlacedAt', type: 'uint40' },
+        ],
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getPixelBatch',
+    inputs: [{ name: 'pixelIds', type: 'uint256[]' }],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple[]',
+        components: [
+          { name: 'color', type: 'uint8' },
+          { name: 'lastPlacer', type: 'address' },
+          { name: 'lastPlacedAt', type: 'uint40' },
+        ],
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getRemainingCooldown',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getCanvasHash',
+    inputs: [],
+    outputs: [{ name: '', type: 'bytes32' }],
     stateMutability: 'view',
   },
   {
@@ -125,4 +177,10 @@ export const PIXELATE_ABI = [
     inputs: [{ name: 'remainingSeconds', type: 'uint256' }],
   },
 ] as const;
+
+export type Pixel = {
+  color: number;
+  lastPlacer: `0x${string}`;
+  lastPlacedAt: bigint;
+};
 
