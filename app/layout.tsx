@@ -29,6 +29,8 @@ export const metadata: Metadata = {
     images: [miniapp.ogImageUrl],
   },
   other: {
+    // Base Mini App verification
+    'base:app_id': '696943bf8b0e0e7315e20725',
     // Farcaster frame meta tags for Mini App embeds
     'fc:frame': 'vNext',
     'fc:frame:image': miniapp.heroImageUrl,
