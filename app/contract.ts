@@ -228,9 +228,253 @@ export const PIXELATE_ABI = [
   },
 ] as const;
 
-export type Pixel = {
-  color: number;
-  lastPlacer: `0x${string}`;
-  lastPlacedAt: bigint;
-};
+export const PIXELATE_SNAPSHOTS_ADDRESS = '0x10da06ba8d3521103217d6a3c418c8903c3c38b0' as const;
+
+export const PIXELATE_SNAPSHOTS_ABI = [
+  // Constructor reference
+  {
+    type: 'function',
+    name: 'PIXELATE',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+  },
+  // State variables
+  {
+    type: 'function',
+    name: 'mintPrice',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  // Snapshot struct via mapping
+  {
+    type: 'function',
+    name: 'snapshots',
+    inputs: [{ name: 'snapshotId', type: 'uint256' }],
+    outputs: [
+      { name: 'blockNumber', type: 'uint256' },
+      { name: 'timestamp', type: 'uint256' },
+      { name: 'canvasHash', type: 'bytes32' },
+      { name: 'imageURI', type: 'string' },
+      { name: 'creator', type: 'address' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'tokenToSnapshot',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'hashToSnapshot',
+    inputs: [{ name: 'canvasHash', type: 'bytes32' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  // Core functions
+  {
+    type: 'function',
+    name: 'createSnapshot',
+    inputs: [{ name: 'imageURI', type: 'string' }],
+    outputs: [{ name: 'snapshotId', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'mintSnapshot',
+    inputs: [{ name: 'snapshotId', type: 'uint256' }],
+    outputs: [{ name: 'tokenId', type: 'uint256' }],
+    stateMutability: 'payable',
+  },
+  {
+    type: 'function',
+    name: 'createAndMint',
+    inputs: [{ name: 'imageURI', type: 'string' }],
+    outputs: [
+      { name: 'snapshotId', type: 'uint256' },
+      { name: 'tokenId', type: 'uint256' },
+    ],
+    stateMutability: 'payable',
+  },
+  // View functions
+  {
+    type: 'function',
+    name: 'getSnapshot',
+    inputs: [{ name: 'snapshotId', type: 'uint256' }],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          { name: 'blockNumber', type: 'uint256' },
+          { name: 'timestamp', type: 'uint256' },
+          { name: 'canvasHash', type: 'bytes32' },
+          { name: 'imageURI', type: 'string' },
+          { name: 'creator', type: 'address' },
+        ],
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getTokenSnapshot',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getUserSnapshots',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256[]' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getUserSnapshotCount',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'totalSnapshots',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'totalMinted',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  // Owner functions
+  {
+    type: 'function',
+    name: 'setMintPrice',
+    inputs: [{ name: 'newPrice', type: 'uint256' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'withdraw',
+    inputs: [],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  // ERC721 standard functions
+  {
+    type: 'function',
+    name: 'balanceOf',
+    inputs: [{ name: 'owner', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'ownerOf',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'tokenURI',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'name',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'symbol',
+    inputs: [],
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+  },
+  // Events
+  {
+    type: 'event',
+    name: 'SnapshotCreated',
+    inputs: [
+      { name: 'snapshotId', type: 'uint256', indexed: true },
+      { name: 'canvasHash', type: 'bytes32', indexed: false },
+      { name: 'creator', type: 'address', indexed: true },
+      { name: 'blockNumber', type: 'uint256', indexed: false },
+      { name: 'timestamp', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'SnapshotMinted',
+    inputs: [
+      { name: 'tokenId', type: 'uint256', indexed: true },
+      { name: 'snapshotId', type: 'uint256', indexed: true },
+      { name: 'minter', type: 'address', indexed: true },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'Transfer',
+    inputs: [
+      { name: 'from', type: 'address', indexed: true },
+      { name: 'to', type: 'address', indexed: true },
+      { name: 'tokenId', type: 'uint256', indexed: true },
+    ],
+  },
+  // Errors
+  {
+    type: 'error',
+    name: 'SnapshotAlreadyExists',
+    inputs: [
+      { name: 'canvasHash', type: 'bytes32' },
+      { name: 'existingSnapshotId', type: 'uint256' },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'SnapshotDoesNotExist',
+    inputs: [{ name: 'snapshotId', type: 'uint256' }],
+  },
+  {
+    type: 'error',
+    name: 'OnlyCreatorCanMint',
+    inputs: [
+      { name: 'creator', type: 'address' },
+      { name: 'caller', type: 'address' },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'InsufficientPayment',
+    inputs: [
+      { name: 'required', type: 'uint256' },
+      { name: 'provided', type: 'uint256' },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'InvalidImageURI',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'WithdrawFailed',
+    inputs: [],
+  },
+] as const;
 
