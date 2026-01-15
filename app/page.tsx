@@ -543,7 +543,7 @@ export default function Home() {
       )}
 
       {/* Left Sidebar: Actions */}
-      <aside className="w-48 border-r border-white/10 p-6 flex flex-col z-40 bg-[#1a1a1a]">
+      <aside className="w-48 flex-shrink-0 border-r border-white/10 p-6 flex flex-col z-40 bg-[#1a1a1a]">
         <h2 className="pixel-font text-[10px] text-gray-500 mb-6 uppercase tracking-widest">
           ACTIONS
         </h2>
@@ -601,7 +601,7 @@ export default function Home() {
 
       {/* Center: Pixel Canvas */}
       <main
-        className={`flex-1 flex flex-col items-center justify-center p-8 pb-28 canvas-container relative bg-[#121212] overflow-hidden ${zoom > 1 ? 'cursor-grab' : ''} ${isPanning ? 'cursor-grabbing' : ''}`}
+        className={`flex-1 min-w-0 flex flex-col items-center justify-center p-8 pb-28 canvas-container relative bg-[#121212] overflow-hidden ${zoom > 1 ? 'cursor-grab' : ''} ${isPanning ? 'cursor-grabbing' : ''}`}
         onMouseDown={handlePanStart}
         onMouseMove={handlePanMove}
         onMouseUp={handlePanEnd}
@@ -674,7 +674,7 @@ export default function Home() {
       </main>
 
       {/* Right Sidebar: Palette */}
-      <aside className="w-72 border-l-4 border-black/20 p-6 flex flex-col z-40 bg-[#1a1a1a] overflow-y-auto">
+      <aside className="w-72 flex-shrink-0 border-l-4 border-black/20 p-6 flex flex-col z-40 bg-[#1a1a1a] overflow-y-auto">
         <h2 className="pixel-font text-[10px] text-gray-500 mb-6 uppercase tracking-widest">
           COLOR KIT
         </h2>
