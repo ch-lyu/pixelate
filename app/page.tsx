@@ -407,7 +407,7 @@ export default function Home() {
     const newX = e.clientX - panStart.x;
     const newY = e.clientY - panStart.y;
     // Limit pan to reasonable bounds
-    const maxPan = (canvasSize - 512) / 2 + 100;
+    const maxPan = (512 * zoom - 512) / 2 + 100;
     setPanOffset({
       x: Math.max(-maxPan, Math.min(maxPan, newX)),
       y: Math.max(-maxPan, Math.min(maxPan, newY)),
@@ -516,7 +516,7 @@ export default function Home() {
 
   const isProcessing = isWritePending || isConfirming;
   const isMintProcessing = mintState !== 'idle' && mintState !== 'success' && mintState !== 'error';
-  const canvasSize = 512 * zoom;
+  const canvasSize = 512; // Fixed size, zoom is applied via CSS transform
 
   return (
     <>
@@ -610,7 +610,7 @@ export default function Home() {
         <div
           className="relative p-4 group transition-transform duration-75"
           style={{
-            transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
+            transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
           }}
         >
           {/* Loading Overlay */}
