@@ -59,4 +59,45 @@ contract Pixelate {
         uint256 lastAction = lastActionTime[user];
         return lastAction == 0 || block.timestamp >= lastAction + COOLDOWN;
     }
+
+    /// @notice Returns remaining cooldown seconds for a user (0 if can place)
+    function getRemainingCooldown(address user) external view returns (uint256) {
+        uint256 lastAction = lastActionTime[user];
+        if (lastAction == 0) return 0;
+        uint256 cooldownEnd = lastAction + COOLDOWN;
+        if (block.timestamp >= cooldownEnd) return 0;
+        return cooldownEnd - block.timestamp;
+    }
+
+    /// @notice Read multiple pixels in one call
+    function getPixelBatch(uint256[] calldata pixelIds) external view returns (Pixel[] memory) {
+        Pixel[] memory result = new Pixel[](pixelIds.length);
+        for (uint256 i = 0; i < pixelIds.length; i++) {
+            result[i] = pixels[pixelIds[i]];
+        }
+        return result;
+    }
+
+    /// @notice Get the entire canvas (all 4096 pixels)
+    function getAllPixels() external view returns (Pixel[] memory) {
+        uint256 totalPixels = WIDTH * HEIGHT;
+        Pixel[] memory result = new Pixel[](totalPixels);
+        for (uint256 i = 0; i < totalPixels; i++) {
+            result[i] = pixels[i];
+        }
+        return result;
+    }
+
+    /// @notice Compute a hash of the current canvas state for verification
+    function getCanvasHash() external view returns (bytes32) {
+        bytes memory packed = new bytes(WIDTH * HEIGHT);
+        for (uint256 i = 0; i < WIDTH * HEIGHT; i++) {
+            packed[i] = bytes1(pixels[i].color);
+        }
+        bytes32 result;
+        assembly {
+            result := keccak256(add(packed, 32), mload(packed))
+        }
+        return result;
+    }
 }
