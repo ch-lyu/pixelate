@@ -2,7 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi';
-import { PIXELATE_ADDRESS, PIXELATE_ABI, type Pixel } from './contract';
+import { parseEther } from 'viem';
+import { Camera, Loader2, Check, X } from 'lucide-react';
+import { PIXELATE_ADDRESS, PIXELATE_ABI, PIXELATE_SNAPSHOTS_ADDRESS, PIXELATE_SNAPSHOTS_ABI, type Pixel } from './contract';
+import { PALETTE, pixelsToBlob } from './utils';
+import { uploadToIPFS, getIPFSGatewayUrl } from './utils/ipfs';
 
 const GRID_SIZE = 64;
 
@@ -24,13 +28,7 @@ const formatTimeAgo = (timestamp: bigint): string => {
 // Zero address for checking unplaced pixels
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-const PALETTE = [
-  '#2A2A2A', // Index 0: Default/unplaced (grey)
-  '#FF6969', '#FF4191', '#E4003A', '#FF7F3E', '#F9D689', '#FFD635', '#FFA800', // Warm tones (1-7)
-  '#37B7C3', '#0083C7', '#0052FF', '#0000EA', '#9B86BD', '#604CC3', '#820080', '#CF6EE4', // Cool tones (8-15)
-  '#0A6847', '#02BE01', '#94E044', '#597445', '#91DDCF', '#00D3DD', '#00CCC0', '#00A368', // Nature tones (16-23)
-  '#FFFFFF', '#E5E1DA', '#C4C4C4', '#888888', '#640D6B', '#561C24', '#A06A42', '#6D482F', // Neutrals (24-31)
-];
+type SnapshotState = 'idle' | 'capturing' | 'uploading' | 'minting' | 'success' | 'error';
 
 export default function Home() {
   const { address, isConnected } = useAccount();
@@ -40,6 +38,11 @@ export default function Home() {
   const [pendingPixel, setPendingPixel] = useState<{ index: number; color: number } | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [zoom, setZoom] = useState(1);
+
+  // Snapshot state
+  const [snapshotState, setSnapshotState] = useState<SnapshotState>('idle');
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+  const [lastSnapshotUrl, setLastSnapshotUrl] = useState<string | null>(null);
 
   // Ref to track pending pixel (avoids stale closure in event callback)
   const pendingPixelRef = useRef<{ index: number; color: number } | null>(null);
@@ -52,6 +55,13 @@ export default function Home() {
     address: PIXELATE_ADDRESS,
     abi: PIXELATE_ABI,
     functionName: 'getAllPixels',
+  });
+
+  // Read mint price from snapshots contract
+  const { data: mintPrice } = useReadContract({
+    address: PIXELATE_SNAPSHOTS_ADDRESS,
+    abi: PIXELATE_SNAPSHOTS_ABI,
+    functionName: 'mintPrice',
   });
 
   // Sync contract data to local state on initial load
@@ -147,6 +157,15 @@ export default function Home() {
     isError: isWriteError,
   } = useWriteContract();
 
+  // Write contract hook for minting snapshots
+  const {
+    writeContract: writeSnapshot,
+    data: snapshotTxHash,
+    isPending: isSnapshotPending,
+    reset: resetSnapshot,
+    error: snapshotWriteError,
+  } = useWriteContract();
+
   // Wait for transaction confirmation
   const {
     isLoading: isConfirming,
@@ -154,6 +173,15 @@ export default function Home() {
     error: txError,
   } = useWaitForTransactionReceipt({
     hash: txHash,
+  });
+
+  // Wait for snapshot transaction confirmation
+  const {
+    isLoading: isSnapshotConfirming,
+    isSuccess: isSnapshotConfirmed,
+    error: snapshotTxError,
+  } = useWaitForTransactionReceipt({
+    hash: snapshotTxHash,
   });
 
   // Log transaction lifecycle
@@ -178,6 +206,35 @@ export default function Home() {
       setPendingPixel(null);
     }
   }, [txError]);
+
+  // Handle snapshot transaction success
+  useEffect(() => {
+    if (isSnapshotConfirmed && snapshotState === 'minting') {
+      console.log('[Pixelate] 📸 Snapshot minted successfully!');
+      setSnapshotState('success');
+      setTimeout(() => {
+        setSnapshotState('idle');
+        resetSnapshot();
+      }, 3000);
+    }
+  }, [isSnapshotConfirmed, snapshotState, resetSnapshot]);
+
+  // Handle snapshot errors
+  useEffect(() => {
+    if (snapshotWriteError) {
+      console.error('[Pixelate] ❌ Snapshot error:', snapshotWriteError.message);
+      setSnapshotError(snapshotWriteError.message);
+      setSnapshotState('error');
+    }
+  }, [snapshotWriteError]);
+
+  useEffect(() => {
+    if (snapshotTxError) {
+      console.error('[Pixelate] ❌ Snapshot tx error:', snapshotTxError.message);
+      setSnapshotError(snapshotTxError.message);
+      setSnapshotState('error');
+    }
+  }, [snapshotTxError]);
 
   // Convert local state to color array for rendering
   const pixels = localPixels
@@ -271,13 +328,119 @@ export default function Home() {
     });
   };
 
+  // Handle snapshot creation and minting
+  const handleSnapshot = async () => {
+    if (!isConnected) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
+    if (snapshotState !== 'idle') return;
+
+    try {
+      // Step 1: Capture canvas
+      setSnapshotState('capturing');
+      setSnapshotError(null);
+      console.log('[Pixelate] 📸 Capturing canvas...');
+
+      const blob = await pixelsToBlob(pixels);
+      console.log('[Pixelate] 📸 Canvas captured, size:', blob.size, 'bytes');
+
+      // Step 2: Upload to IPFS
+      setSnapshotState('uploading');
+      console.log('[Pixelate] ☁️ Uploading to IPFS...');
+
+      const timestamp = Date.now();
+      const result = await uploadToIPFS(blob, `pixelate-${timestamp}.png`);
+
+      if (!result.success || !result.ipfsUrl) {
+        throw new Error(result.error || 'Failed to upload to IPFS');
+      }
+
+      console.log('[Pixelate] ☁️ Uploaded to IPFS:', result.ipfsHash);
+      setLastSnapshotUrl(getIPFSGatewayUrl(result.ipfsHash!));
+
+      // Step 3: Mint NFT
+      setSnapshotState('minting');
+      console.log('[Pixelate] 🎨 Minting snapshot NFT...');
+
+      const price = mintPrice || parseEther('0.001');
+
+      writeSnapshot({
+        address: PIXELATE_SNAPSHOTS_ADDRESS,
+        abi: PIXELATE_SNAPSHOTS_ABI,
+        functionName: 'createAndMint',
+        args: [result.ipfsUrl],
+        value: price,
+      });
+    } catch (error) {
+      console.error('[Pixelate] ❌ Snapshot error:', error);
+      setSnapshotError(error instanceof Error ? error.message : 'Unknown error');
+      setSnapshotState('error');
+    }
+  };
+
+  const resetSnapshotState = () => {
+    setSnapshotState('idle');
+    setSnapshotError(null);
+    resetSnapshot();
+  };
+
   const getCoords = (index: number) => ({
     x: index % GRID_SIZE,
     y: Math.floor(index / GRID_SIZE),
   });
 
   const isProcessing = isWritePending || isConfirming;
+  const isSnapshotProcessing = snapshotState !== 'idle' && snapshotState !== 'success' && snapshotState !== 'error';
   const canvasSize = 512 * zoom;
+
+  const getSnapshotButtonContent = () => {
+    switch (snapshotState) {
+      case 'capturing':
+        return (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Capturing...</span>
+          </>
+        );
+      case 'uploading':
+        return (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Uploading...</span>
+          </>
+        );
+      case 'minting':
+        return (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Minting...</span>
+          </>
+        );
+      case 'success':
+        return (
+          <>
+            <Check className="w-4 h-4 text-green-400" />
+            <span className="text-green-400">Minted!</span>
+          </>
+        );
+      case 'error':
+        return (
+          <>
+            <X className="w-4 h-4 text-red-400" />
+            <span className="text-red-400">Failed</span>
+          </>
+        );
+      default:
+        return (
+          <>
+            <Camera className="w-4 h-4" />
+            <span>Snapshot</span>
+          </>
+        );
+    }
+  };
 
   return (
     <>
@@ -386,6 +549,43 @@ export default function Home() {
 
         {/* Controls */}
         <div className="mt-10 space-y-6">
+          {/* Snapshot Button */}
+          <button
+            onClick={snapshotState === 'error' ? resetSnapshotState : handleSnapshot}
+            disabled={!isConnected || isSnapshotProcessing || isSnapshotPending || isSnapshotConfirming}
+            className={`w-full p-4 retro-card border-white/10 flex items-center justify-center gap-2 pixel-font text-[10px] transition-all ${
+              snapshotState === 'success'
+                ? 'border-green-500/50 bg-green-500/10'
+                : snapshotState === 'error'
+                ? 'border-red-500/50 bg-red-500/10 cursor-pointer hover:bg-red-500/20'
+                : isSnapshotProcessing
+                ? 'opacity-75 cursor-wait'
+                : 'hover:bg-white/5 cursor-pointer'
+            } ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {getSnapshotButtonContent()}
+          </button>
+
+          {/* Snapshot Error Message */}
+          {snapshotState === 'error' && snapshotError && (
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded text-[9px] text-red-400">
+              {snapshotError.slice(0, 100)}
+              {snapshotError.length > 100 && '...'}
+            </div>
+          )}
+
+          {/* Last Snapshot Link */}
+          {lastSnapshotUrl && snapshotState === 'success' && (
+            <a
+              href={lastSnapshotUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block p-3 bg-green-500/10 border border-green-500/30 rounded text-[9px] text-green-400 text-center hover:bg-green-500/20 transition-colors"
+            >
+              View on IPFS →
+            </a>
+          )}
+
           {/* Zoom Control */}
           <div className="p-4 retro-card border-white/5">
             <div className="flex items-center justify-between mb-4">

@@ -478,3 +478,19 @@ export const PIXELATE_SNAPSHOTS_ABI = [
   },
 ] as const;
 
+// Type for pixel data returned from contract
+export type Pixel = {
+  color: number;
+  lastPlacer: `0x${string}`;
+  lastPlacedAt: bigint;
+};
+
+// Type for snapshot data returned from contract
+export type Snapshot = {
+  blockNumber: bigint;
+  timestamp: bigint;
+  canvasHash: `0x${string}`;
+  imageURI: string;
+  creator: `0x${string}`;
+};
+
