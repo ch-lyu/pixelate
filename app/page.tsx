@@ -10,20 +10,6 @@ const GRID_SIZE = 64;
 // Shorten address for display: 0x1234...5678
 const shortenAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
-// Format relative time: "42 seconds ago", "3 minutes ago", etc.
-const formatTimeAgo = (timestamp: bigint): string => {
-  if (timestamp === BigInt(0)) return 'never';
-  const now = Math.floor(Date.now() / 1000);
-  const seconds = now - Number(timestamp);
-  if (seconds < 60) return `${seconds}s ago`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86400)}d ago`;
-};
-
-// Zero address for checking unplaced pixels
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
-
 const PALETTE = [
   '#2A2A2A', // Index 0: Default/unplaced (grey)
   '#FF6969', '#FF4191', '#E4003A', '#FF7F3E', '#F9D689', '#FFD635', '#FFA800', // Warm tones (1-7)
@@ -358,73 +344,8 @@ export default function Home() {
           <button className="w-12 h-12 rounded border-2 border-dashed border-white/10 flex items-center justify-center hover:bg-white/5 transition-colors group">
             <Plus className="w-5 h-5 text-gray-600 group-hover:scale-110 transition-transform" />
           </button>
-<<<<<<< Updated upstream
-=======
-        ))}
-      </div>
-
-      {/* Status Bar */}
-      <div className="h-6 mb-3 text-sm font-mono">
-        {isLoadingPixels ? (
-          <span className="text-yellow-400">Loading canvas...</span>
-        ) : isWritePending ? (
-          <span className="text-yellow-400">Confirm in wallet...</span>
-        ) : isConfirming ? (
-          <span className="text-yellow-400">Placing pixel...</span>
-        ) : hoveredPixel !== null ? (
-          <span className="text-gray-400">
-            ({getCoords(hoveredPixel).x}, {getCoords(hoveredPixel).y})
-            {pixelInfo && pixelInfo[hoveredPixel]?.lastPlacer !== ZERO_ADDRESS && (
-              <span className="text-gray-500">
-                {' · '}
-                {shortenAddress(pixelInfo[hoveredPixel].lastPlacer)}{' · '}
-                {formatTimeAgo(pixelInfo[hoveredPixel].lastPlacedAt)}
-              </span>
-            )}
-          </span>
-        ) : (
-          <span className="text-gray-600">hover over canvas</span>
-        )}
-      </div>
-
-      {/* Canvas */}
-      <div className="relative">
-        {isLoadingPixels && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10 rounded-lg">
-            <div className="text-white">Loading...</div>
-          </div>
-        )}
-        <div
-          className={`border border-gray-800 rounded-lg overflow-hidden shadow-2xl ${isProcessing ? 'opacity-75' : ''}`}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: `repeat(${GRID_SIZE}, 8px)`,
-            gap: 0,
-          }}
-        >
-          {pixels.map((colorIndex, i) => {
-            // Show pending pixel optimistically
-            const displayColor = pendingPixel?.index === i ? pendingPixel.color : colorIndex;
-            const isPending = pendingPixel?.index === i;
-
-            return (
-              <div
-                key={i}
-                className={`w-2 h-2 cursor-pointer hover:opacity-75 ${isPending ? 'animate-pulse' : ''}`}
-                style={{ 
-                  backgroundColor: PALETTE[displayColor] || PALETTE[0],
-                  transition: 'opacity 150ms ease-out',
-                }}
-                onClick={() => handlePixelClick(i)}
-                onMouseEnter={() => setHoveredPixel(i)}
-                onMouseLeave={() => setHoveredPixel(null)}
-              />
-            );
-          })}
->>>>>>> Stashed changes
         </div>
 
-<<<<<<< Updated upstream
         {/* Controls */}
         <div className="mt-10 space-y-6">
           {/* Zoom Control */}
@@ -480,18 +401,5 @@ export default function Home() {
         </div>
       </aside>
     </>
-=======
-      {/* Footer Info */}
-      <div className="mt-6 text-sm text-gray-500 text-center">
-        {!isConnected ? (
-          <p>Connect wallet to place pixels</p>
-        ) : cooldownRemaining > 0 ? (
-          <p className="text-yellow-500">Cooldown: {cooldownRemaining}s remaining</p>
-        ) : (
-          <p>Click a pixel to place!</p>
-        )}
-      </div>
-    </div>
->>>>>>> Stashed changes
   );
 }
