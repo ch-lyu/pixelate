@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi';
 import { parseEther } from 'viem';
-import { Camera, Loader2, Check, X } from 'lucide-react';
+import { Camera, X } from 'lucide-react';
 import { PIXELATE_ADDRESS, PIXELATE_ABI, PIXELATE_SNAPSHOTS_ADDRESS, PIXELATE_SNAPSHOTS_ABI, type Pixel } from './contract';
 import { PALETTE, pixelsToBlob } from './utils';
-import { uploadToIPFS, getIPFSGatewayUrl } from './utils/ipfs';
+import { uploadToIPFS } from './utils/ipfs';
 
 const GRID_SIZE = 64;
 
@@ -28,7 +28,15 @@ const formatTimeAgo = (timestamp: bigint): string => {
 // Zero address for checking unplaced pixels
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-type SnapshotState = 'idle' | 'capturing' | 'uploading' | 'minting' | 'success' | 'error';
+type MintState = 'idle' | 'uploading' | 'minting' | 'success' | 'error';
+
+// Local snapshot stored in memory
+interface LocalSnapshot {
+  id: string;
+  dataUrl: string;
+  timestamp: number;
+  pixelColors: number[];
+}
 
 export default function Home() {
   const { address, isConnected } = useAccount();
@@ -39,10 +47,13 @@ export default function Home() {
   const [showGrid, setShowGrid] = useState(true);
   const [zoom, setZoom] = useState(1);
 
-  // Snapshot state
-  const [snapshotState, setSnapshotState] = useState<SnapshotState>('idle');
-  const [snapshotError, setSnapshotError] = useState<string | null>(null);
-  const [lastSnapshotUrl, setLastSnapshotUrl] = useState<string | null>(null);
+  // Local snapshots (stored in memory, not on chain yet)
+  const [localSnapshots, setLocalSnapshots] = useState<LocalSnapshot[]>([]);
+  const [selectedSnapshot, setSelectedSnapshot] = useState<LocalSnapshot | null>(null);
+  
+  // Minting state (for when user clicks mint on a snapshot)
+  const [mintState, setMintState] = useState<MintState>('idle');
+  const [mintError, setMintError] = useState<string | null>(null);
 
   // Ref to track pending pixel (avoids stale closure in event callback)
   const pendingPixelRef = useRef<{ index: number; color: number } | null>(null);
@@ -207,32 +218,37 @@ export default function Home() {
     }
   }, [txError]);
 
-  // Handle snapshot transaction success
+  // Handle mint transaction success
   useEffect(() => {
-    if (isSnapshotConfirmed && snapshotState === 'minting') {
+    if (isSnapshotConfirmed && mintState === 'minting') {
       console.log('[Pixelate] 📸 Snapshot minted successfully!');
-      setSnapshotState('success');
+      setMintState('success');
+      // Remove the minted snapshot from local list after success
+      if (selectedSnapshot) {
+        setLocalSnapshots(prev => prev.filter(s => s.id !== selectedSnapshot.id));
+      }
       setTimeout(() => {
-        setSnapshotState('idle');
+        setMintState('idle');
+        setSelectedSnapshot(null);
         resetSnapshot();
-      }, 3000);
+      }, 2000);
     }
-  }, [isSnapshotConfirmed, snapshotState, resetSnapshot]);
+  }, [isSnapshotConfirmed, mintState, selectedSnapshot, resetSnapshot]);
 
-  // Handle snapshot errors
+  // Handle mint errors
   useEffect(() => {
     if (snapshotWriteError) {
-      console.error('[Pixelate] ❌ Snapshot error:', snapshotWriteError.message);
-      setSnapshotError(snapshotWriteError.message);
-      setSnapshotState('error');
+      console.error('[Pixelate] ❌ Mint error:', snapshotWriteError.message);
+      setMintError(snapshotWriteError.message);
+      setMintState('error');
     }
   }, [snapshotWriteError]);
 
   useEffect(() => {
     if (snapshotTxError) {
-      console.error('[Pixelate] ❌ Snapshot tx error:', snapshotTxError.message);
-      setSnapshotError(snapshotTxError.message);
-      setSnapshotState('error');
+      console.error('[Pixelate] ❌ Mint tx error:', snapshotTxError.message);
+      setMintError(snapshotTxError.message);
+      setMintState('error');
     }
   }, [snapshotTxError]);
 
@@ -328,40 +344,57 @@ export default function Home() {
     });
   };
 
-  // Handle snapshot creation and minting
-  const handleSnapshot = async () => {
+  // Capture current canvas state as a local snapshot
+  const handleCapture = async () => {
+    console.log('[Pixelate] 📸 Capturing canvas...');
+    
+    try {
+      const blob = await pixelsToBlob(pixels);
+      const dataUrl = URL.createObjectURL(blob);
+      
+      const snapshot: LocalSnapshot = {
+        id: `snap-${Date.now()}`,
+        dataUrl,
+        timestamp: Date.now(),
+        pixelColors: [...pixels],
+      };
+      
+      setLocalSnapshots(prev => [snapshot, ...prev].slice(0, 10)); // Keep max 10 snapshots
+      console.log('[Pixelate] 📸 Snapshot saved locally');
+    } catch (error) {
+      console.error('[Pixelate] ❌ Capture error:', error);
+    }
+  };
+
+  // Mint a selected snapshot as NFT
+  const handleMint = async (snapshot: LocalSnapshot) => {
     if (!isConnected) {
       alert('Please connect your wallet first');
       return;
     }
 
-    if (snapshotState !== 'idle') return;
+    if (mintState !== 'idle') return;
 
     try {
-      // Step 1: Capture canvas
-      setSnapshotState('capturing');
-      setSnapshotError(null);
-      console.log('[Pixelate] 📸 Capturing canvas...');
-
-      const blob = await pixelsToBlob(pixels);
-      console.log('[Pixelate] 📸 Canvas captured, size:', blob.size, 'bytes');
-
-      // Step 2: Upload to IPFS
-      setSnapshotState('uploading');
+      // Step 1: Upload to IPFS
+      setMintState('uploading');
+      setMintError(null);
       console.log('[Pixelate] ☁️ Uploading to IPFS...');
 
-      const timestamp = Date.now();
-      const result = await uploadToIPFS(blob, `pixelate-${timestamp}.png`);
+      // Convert dataUrl back to blob
+      const response = await fetch(snapshot.dataUrl);
+      const blob = await response.blob();
+      
+      const result = await uploadToIPFS(blob, `pixelate-${snapshot.timestamp}.png`);
 
       if (!result.success || !result.ipfsUrl) {
         throw new Error(result.error || 'Failed to upload to IPFS');
       }
 
       console.log('[Pixelate] ☁️ Uploaded to IPFS:', result.ipfsHash);
-      setLastSnapshotUrl(getIPFSGatewayUrl(result.ipfsHash!));
 
-      // Step 3: Mint NFT
-      setSnapshotState('minting');
+      // Step 2: Mint NFT
+      setMintState('minting');
       console.log('[Pixelate] 🎨 Minting snapshot NFT...');
 
       const price = mintPrice || parseEther('0.001');
@@ -374,16 +407,20 @@ export default function Home() {
         value: price,
       });
     } catch (error) {
-      console.error('[Pixelate] ❌ Snapshot error:', error);
-      setSnapshotError(error instanceof Error ? error.message : 'Unknown error');
-      setSnapshotState('error');
+      console.error('[Pixelate] ❌ Mint error:', error);
+      setMintError(error instanceof Error ? error.message : 'Unknown error');
+      setMintState('error');
     }
   };
 
-  const resetSnapshotState = () => {
-    setSnapshotState('idle');
-    setSnapshotError(null);
+  const resetMintState = () => {
+    setMintState('idle');
+    setMintError(null);
     resetSnapshot();
+  };
+
+  const formatTimestamp = (ts: number) => {
+    return new Date(ts).toLocaleString();
   };
 
   const getCoords = (index: number) => ({
@@ -392,55 +429,8 @@ export default function Home() {
   });
 
   const isProcessing = isWritePending || isConfirming;
-  const isSnapshotProcessing = snapshotState !== 'idle' && snapshotState !== 'success' && snapshotState !== 'error';
+  const isMintProcessing = mintState !== 'idle' && mintState !== 'success' && mintState !== 'error';
   const canvasSize = 512 * zoom;
-
-  const getSnapshotButtonContent = () => {
-    switch (snapshotState) {
-      case 'capturing':
-        return (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Capturing...</span>
-          </>
-        );
-      case 'uploading':
-        return (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Uploading...</span>
-          </>
-        );
-      case 'minting':
-        return (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Minting...</span>
-          </>
-        );
-      case 'success':
-        return (
-          <>
-            <Check className="w-4 h-4 text-green-400" />
-            <span className="text-green-400">Minted!</span>
-          </>
-        );
-      case 'error':
-        return (
-          <>
-            <X className="w-4 h-4 text-red-400" />
-            <span className="text-red-400">Failed</span>
-          </>
-        );
-      default:
-        return (
-          <>
-            <Camera className="w-4 h-4" />
-            <span>Snapshot</span>
-          </>
-        );
-    }
-  };
 
   return (
     <>
@@ -467,11 +457,13 @@ export default function Home() {
       )}
 
       {/* Center: Pixel Canvas */}
-      <main className="flex-1 flex flex-col items-center justify-center p-8 canvas-container relative bg-[#121212]">
+      <main className="flex-1 flex flex-col items-center justify-center p-8 pb-28 canvas-container relative bg-[#121212]">
         <div className="relative p-4 group">
           {/* Status Bar */}
           <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-[#0a0a0a] text-white px-4 py-2 border-2 border-[#333] pixel-font text-[8px] pointer-events-none z-10 whitespace-nowrap">
-            {isLoadingPixels ? (
+            {selectedSnapshot ? (
+              <span className="text-[#87CEEB]">📸 VIEWING SNAPSHOT</span>
+            ) : isLoadingPixels ? (
               <span className="text-yellow-400">LOADING...</span>
             ) : isWritePending ? (
               <span className="text-yellow-400">CONFIRM IN WALLET...</span>
@@ -485,44 +477,92 @@ export default function Home() {
           </div>
 
           {/* Loading Overlay */}
-          {isLoadingPixels && (
+          {isLoadingPixels && !selectedSnapshot && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10 rounded">
               <div className="text-white pixel-font text-[10px]">Loading canvas...</div>
             </div>
           )}
 
-          {/* Grid Container */}
-          <div
-            className={`pixel-grid overflow-hidden ${isProcessing ? 'opacity-75' : ''}`}
-            style={{
-              width: `${canvasSize}px`,
-              height: `${canvasSize}px`,
-              gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)`,
-              gridTemplateRows: `repeat(${GRID_SIZE}, 1fr)`,
-              gap: showGrid ? '1px' : '0px',
-            }}
-          >
-            {pixels.map((colorIndex, i) => {
-              // Show pending pixel optimistically
-              const displayColor = pendingPixel?.index === i ? pendingPixel.color : colorIndex;
-              const isPending = pendingPixel?.index === i;
+          {/* Snapshot View Mode */}
+          {selectedSnapshot ? (
+            <div
+              className="relative"
+              style={{
+                width: `${canvasSize}px`,
+                height: `${canvasSize}px`,
+              }}
+            >
+              <img
+                src={selectedSnapshot.dataUrl}
+                alt="Snapshot"
+                className="w-full h-full pixelated rounded"
+              />
+            </div>
+          ) : (
+            /* Live Grid Container */
+            <div
+              className={`pixel-grid overflow-hidden ${isProcessing ? 'opacity-75' : ''}`}
+              style={{
+                width: `${canvasSize}px`,
+                height: `${canvasSize}px`,
+                gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)`,
+                gridTemplateRows: `repeat(${GRID_SIZE}, 1fr)`,
+                gap: showGrid ? '1px' : '0px',
+              }}
+            >
+              {pixels.map((colorIndex, i) => {
+                // Show pending pixel optimistically
+                const displayColor = pendingPixel?.index === i ? pendingPixel.color : colorIndex;
+                const isPending = pendingPixel?.index === i;
 
-              return (
-                <div
-                  key={i}
-                  className={`pixel cursor-pointer ${isPending ? 'animate-pulse' : ''}`}
-                  style={{ backgroundColor: PALETTE[displayColor] || PALETTE[0] }}
-                  onClick={() => handlePixelClick(i)}
-                  onMouseEnter={(e) => {
-                    setHoveredPixel(i);
-                    setMousePos({ x: e.clientX, y: e.clientY });
-                  }}
-                  onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
-                  onMouseLeave={() => setHoveredPixel(null)}
-                />
-              );
-            })}
-          </div>
+                return (
+                  <div
+                    key={i}
+                    className={`pixel cursor-pointer ${isPending ? 'animate-pulse' : ''}`}
+                    style={{ backgroundColor: PALETTE[displayColor] || PALETTE[0] }}
+                    onClick={() => handlePixelClick(i)}
+                    onMouseEnter={(e) => {
+                      setHoveredPixel(i);
+                      setMousePos({ x: e.clientX, y: e.clientY });
+                    }}
+                    onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
+                    onMouseLeave={() => setHoveredPixel(null)}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          {/* Snapshot Controls - shown when viewing a snapshot */}
+          {selectedSnapshot && (
+            <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-[#0a0a0a] px-4 py-2 rounded border border-[#333]">
+              <span className="pixel-font text-[8px] text-gray-400">
+                {formatTimestamp(selectedSnapshot.timestamp)}
+              </span>
+              <button
+                onClick={() => setSelectedSnapshot(null)}
+                className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded pixel-font text-[8px] text-white transition-colors"
+              >
+                ← LIVE
+              </button>
+              <button
+                onClick={() => handleMint(selectedSnapshot)}
+                disabled={!isConnected || isMintProcessing}
+                className={`px-3 py-1 rounded pixel-font text-[8px] transition-colors ${
+                  isMintProcessing
+                    ? 'bg-yellow-500/20 text-yellow-400 cursor-wait'
+                    : mintState === 'success'
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-[#87CEEB]/20 hover:bg-[#87CEEB]/30 text-[#87CEEB]'
+                } ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {mintState === 'uploading' ? '⏳ UPLOADING...' : 
+                 mintState === 'minting' ? '⏳ MINTING...' : 
+                 mintState === 'success' ? '✓ MINTED!' : 
+                 '🎨 MINT NFT'}
+              </button>
+            </div>
+          )}
         </div>
       </main>
 
@@ -549,43 +589,6 @@ export default function Home() {
 
         {/* Controls */}
         <div className="mt-10 space-y-6">
-          {/* Snapshot Button */}
-          <button
-            onClick={snapshotState === 'error' ? resetSnapshotState : handleSnapshot}
-            disabled={!isConnected || isSnapshotProcessing || isSnapshotPending || isSnapshotConfirming}
-            className={`w-full p-4 retro-card border-white/10 flex items-center justify-center gap-2 pixel-font text-[10px] transition-all ${
-              snapshotState === 'success'
-                ? 'border-green-500/50 bg-green-500/10'
-                : snapshotState === 'error'
-                ? 'border-red-500/50 bg-red-500/10 cursor-pointer hover:bg-red-500/20'
-                : isSnapshotProcessing
-                ? 'opacity-75 cursor-wait'
-                : 'hover:bg-white/5 cursor-pointer'
-            } ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            {getSnapshotButtonContent()}
-          </button>
-
-          {/* Snapshot Error Message */}
-          {snapshotState === 'error' && snapshotError && (
-            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded text-[9px] text-red-400">
-              {snapshotError.slice(0, 100)}
-              {snapshotError.length > 100 && '...'}
-            </div>
-          )}
-
-          {/* Last Snapshot Link */}
-          {lastSnapshotUrl && snapshotState === 'success' && (
-            <a
-              href={lastSnapshotUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block p-3 bg-green-500/10 border border-green-500/30 rounded text-[9px] text-green-400 text-center hover:bg-green-500/20 transition-colors"
-            >
-              View on IPFS →
-            </a>
-          )}
-
           {/* Zoom Control */}
           <div className="p-4 retro-card border-white/5">
             <div className="flex items-center justify-between mb-4">
@@ -638,6 +641,80 @@ export default function Home() {
           )}
         </div>
       </aside>
+
+      {/* Bottom Action Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-[#0a0a0a] border-t border-white/10 px-6 py-4 z-40">
+        <div className="flex items-center gap-4">
+          {/* Capture Button */}
+          <button
+            onClick={handleCapture}
+            disabled={!!selectedSnapshot}
+            className={`flex-shrink-0 w-16 h-16 rounded border-2 border-dashed border-white/30 hover:border-[#87CEEB] transition-colors flex items-center justify-center ${
+              selectedSnapshot ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+            }`}
+            title="Capture Snapshot"
+          >
+            <Camera className="w-6 h-6 text-gray-400" />
+          </button>
+
+          {/* Snapshots */}
+          {localSnapshots.length > 0 && (
+            <div className="flex gap-3 overflow-x-auto pb-1 flex-1">
+              {localSnapshots.map((snap) => (
+                <button
+                  key={snap.id}
+                  onClick={() => setSelectedSnapshot(snap)}
+                  className={`flex-shrink-0 relative group ${
+                    selectedSnapshot?.id === snap.id
+                      ? 'ring-2 ring-[#87CEEB] ring-offset-2 ring-offset-[#0a0a0a]'
+                      : ''
+                  }`}
+                >
+                  <img
+                    src={snap.dataUrl}
+                    alt="Snapshot"
+                    className="w-16 h-16 rounded border border-white/20 hover:border-[#87CEEB] transition-colors pixelated"
+                  />
+                  {/* Timestamp overlay on hover */}
+                  <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded">
+                    <span className="text-[7px] text-white text-center px-1">
+                      {new Date(snap.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  {/* Delete button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (selectedSnapshot?.id === snap.id) {
+                        setSelectedSnapshot(null);
+                      }
+                      setLocalSnapshots(prev => prev.filter(s => s.id !== snap.id));
+                    }}
+                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500/80 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-2.5 h-2.5 text-white" />
+                  </button>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Empty state text */}
+          {localSnapshots.length === 0 && (
+            <span className="pixel-font text-[9px] text-gray-600">
+              Click the camera to capture a snapshot
+            </span>
+          )}
+        </div>
+        
+        {/* Mint error message */}
+        {mintState === 'error' && mintError && (
+          <div className="mt-2 p-2 bg-red-500/10 border border-red-500/30 rounded text-[8px] text-red-400">
+            {mintError.slice(0, 100)}...
+            <button onClick={resetMintState} className="ml-2 underline">Dismiss</button>
+          </div>
+        )}
+      </div>
     </>
   );
 }
