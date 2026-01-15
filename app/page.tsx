@@ -477,20 +477,20 @@ export default function Home() {
       {/* Cursor-following tooltip */}
       {hoveredPixel !== null && localPixels && localPixels[hoveredPixel]?.lastPlacer !== ZERO_ADDRESS && (
         <div
-          className="fixed bg-[#0a0a0a] text-white px-3 py-2 border border-[#333] text-xs pointer-events-none z-50 rounded shadow-lg"
+          className="fixed bg-[#0a0a0a] text-white px-3 py-2 border border-[#333] pointer-events-none z-50 rounded shadow-lg pixel-font"
           style={{
             left: mousePos.x + 12,
             top: mousePos.y + 12,
           }}
         >
-          <div className="text-gray-400 mb-1">
+          <div className="text-gray-400 mb-1 text-[8px]">
             ({getCoords(hoveredPixel).x}, {getCoords(hoveredPixel).y})
           </div>
-          <div className="text-gray-500 text-[10px]">Placed by</div>
-          <div className="font-mono text-[10px] text-white break-all max-w-[280px]">
+          <div className="text-gray-500 text-[6px]">PLACED BY</div>
+          <div className="text-[6px] text-white break-all max-w-[280px]">
             {localPixels[hoveredPixel].lastPlacer}
           </div>
-          <div className="text-gray-500 text-[10px] mt-1">
+          <div className="text-gray-500 text-[6px] mt-1">
             {formatTimeAgo(localPixels[hoveredPixel].lastPlacedAt)}
           </div>
         </div>
@@ -499,23 +499,6 @@ export default function Home() {
       {/* Center: Pixel Canvas */}
       <main className="flex-1 flex flex-col items-center justify-center p-8 pb-28 canvas-container relative bg-[#121212]">
         <div className="relative p-4 group">
-          {/* Status Bar */}
-          <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-[#0a0a0a] text-white px-4 py-2 border-2 border-[#333] pixel-font text-[8px] pointer-events-none z-10 whitespace-nowrap">
-            {selectedSnapshot ? (
-              <span className="text-[#87CEEB]">📸 VIEWING SNAPSHOT</span>
-            ) : isLoadingPixels ? (
-              <span className="text-yellow-400">LOADING...</span>
-            ) : isWritePending ? (
-              <span className="text-yellow-400">CONFIRM IN WALLET...</span>
-            ) : isConfirming ? (
-              <span className="text-yellow-400">PLACING PIXEL...</span>
-            ) : hoveredPixel !== null ? (
-              <span>({getCoords(hoveredPixel).x}, {getCoords(hoveredPixel).y})</span>
-            ) : (
-              <span className="text-gray-500">HOVER OVER CANVAS</span>
-            )}
-          </div>
-
           {/* Loading Overlay */}
           {isLoadingPixels && !selectedSnapshot && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10 rounded">
