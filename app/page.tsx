@@ -10,6 +10,21 @@ const GRID_SIZE = 64;
 // Shorten address for display: 0x1234...5678
 const shortenAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
+// Format relative time: "42s ago", "3m ago", etc.
+const formatTimeAgo = (timestamp: bigint): string => {
+  if (timestamp === BigInt(0)) return 'never';
+  const now = Math.floor(Date.now() / 1000);
+  const seconds = now - Number(timestamp);
+  if (seconds < 0) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
+};
+
+// Zero address for checking unplaced pixels
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
 const PALETTE = [
   '#2A2A2A', // Index 0: Default/unplaced (grey)
   '#FF6969', '#FF4191', '#E4003A', '#FF7F3E', '#F9D689', '#FFD635', '#FFA800', // Warm tones (1-7)
@@ -278,7 +293,15 @@ export default function Home() {
             ) : isConfirming ? (
               <span className="text-yellow-400">PLACING PIXEL...</span>
             ) : hoveredPixel !== null ? (
-              <span>COORD: {getCoords(hoveredPixel).x},{getCoords(hoveredPixel).y}</span>
+              <span>
+                ({getCoords(hoveredPixel).x}, {getCoords(hoveredPixel).y})
+                {localPixels && localPixels[hoveredPixel]?.lastPlacer !== ZERO_ADDRESS && (
+                  <span className="text-gray-400">
+                    {' · '}{shortenAddress(localPixels[hoveredPixel].lastPlacer)}{' · '}
+                    {formatTimeAgo(localPixels[hoveredPixel].lastPlacedAt)}
+                  </span>
+                )}
+              </span>
             ) : (
               <span className="text-gray-500">HOVER OVER CANVAS</span>
             )}
