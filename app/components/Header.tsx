@@ -19,10 +19,10 @@ export function Header() {
         </h1>
       </div>
 
-      <div className="flex items-center space-x-6">
+      <div className="flex items-center">
         <Wallet>
-          <ConnectWallet>
-            <Name />
+          <ConnectWallet className="!gap-2">
+            <Name className="max-w-[120px] truncate" />
           </ConnectWallet>
           <WalletDropdown>
             <Identity className="px-4 pt-3 pb-2" hasCopyAddressOnClick>

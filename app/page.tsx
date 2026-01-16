@@ -837,6 +837,14 @@ export default function Home() {
           <>
             {/* Color palette row */}
             <div className="flex items-center gap-2 overflow-x-auto pb-2">
+              {/* Camera button - first on mobile */}
+              <button
+                onClick={handleCapture}
+                disabled={!!selectedSnapshot}
+                className="flex-shrink-0 w-10 h-10 bg-[#262626] hover:bg-[#333] rounded flex items-center justify-center border border-white/10"
+              >
+                <Camera className="w-5 h-5 text-[#87CEEB]" />
+              </button>
               <div className="flex gap-1.5 flex-shrink-0">
                 {PALETTE.slice(1).map((color, i) => (
                   <button
@@ -850,14 +858,6 @@ export default function Home() {
                   />
                 ))}
               </div>
-              {/* Camera button */}
-              <button
-                onClick={handleCapture}
-                disabled={!!selectedSnapshot}
-                className="ml-auto flex-shrink-0 w-10 h-10 bg-[#262626] hover:bg-[#333] rounded flex items-center justify-center border border-white/10"
-              >
-                <Camera className="w-5 h-5 text-[#87CEEB]" />
-              </button>
             </div>
             {/* Snapshots row (if any) */}
             {localSnapshots.length > 0 && (
