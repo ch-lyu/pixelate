@@ -6,9 +6,9 @@ contract Pixelate {
     uint256 public constant HEIGHT = 64;
     uint8 public constant PALETTE_SIZE = 32;
 
-    // Admin-adjustable cooldown (default 60 seconds)
+    // Admin-adjustable cooldown (default 5 seconds)
     address public owner;
-    uint256 public cooldown = 60 seconds;
+    uint256 public cooldown = 5 seconds;
 
     struct Pixel {
         uint8 color;

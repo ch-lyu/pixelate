@@ -30,7 +30,7 @@ export const metadata: Metadata = {
   },
   other: {
     // Base Mini App verification
-    'base:app_id': '696943bf8b0e0e7315e20725',
+    'base:app_id': '6969a16a8aabd019b25f51d8',
     // Farcaster frame meta tags for Mini App embeds
     'fc:frame': 'vNext',
     'fc:frame:image': miniapp.heroImageUrl,

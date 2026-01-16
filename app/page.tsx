@@ -330,9 +330,15 @@ export default function Home() {
     }
   }, [pixelData, localPixels]);
 
+  // Track which txHash we've already processed to avoid duplicate handling
+  const processedTxHashRef = useRef<string | null>(null);
+
   // Handle successful transaction - clear pending and update pixel as backup (in case event is slow)
   useEffect(() => {
-    if (isConfirmed && pendingPixelRef.current) {
+    // Only process if we have a new confirmed transaction that hasn't been processed yet
+    if (isConfirmed && txHash && pendingPixelRef.current && processedTxHashRef.current !== txHash) {
+      processedTxHashRef.current = txHash; // Mark this txHash as processed
+
       const { index, color } = pendingPixelRef.current;
       const x = index % GRID_SIZE;
       const y = Math.floor(index / GRID_SIZE);
@@ -355,7 +361,7 @@ export default function Home() {
       pendingPixelRef.current = null;
       setPendingPixel(null);
 
-      // Immediately start 60s cooldown (don't wait for refetch)
+      // Immediately start 5s cooldown (don't wait for refetch)
       setCooldownRemaining(5);
       refetchCooldown(); // Still refetch to sync with contract
       resetWrite();
@@ -542,8 +548,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Left Sidebar: Actions */}
-      <aside className="w-48 flex-shrink-0 border-r border-white/10 p-6 flex flex-col z-40 bg-[#1a1a1a]">
+      {/* Left Sidebar: Actions - Hidden on mobile */}
+      <aside className="hidden md:flex w-48 flex-shrink-0 border-r border-white/10 p-6 flex-col z-40 bg-[#1a1a1a]">
         <h2 className="pixel-font text-[10px] text-gray-500 mb-6 uppercase tracking-widest">
           ACTIONS
         </h2>
@@ -601,7 +607,7 @@ export default function Home() {
 
       {/* Center: Pixel Canvas */}
       <main
-        className={`flex-1 min-w-0 flex flex-col items-center justify-center p-8 pb-28 canvas-container relative bg-[#121212] overflow-hidden ${zoom > 1 ? 'cursor-grab' : ''} ${isPanning ? 'cursor-grabbing' : ''}`}
+        className={`flex-1 min-w-0 flex flex-col items-center justify-center p-4 md:p-8 pb-40 md:pb-28 canvas-container relative bg-[#121212] overflow-hidden ${zoom > 1 ? 'cursor-grab' : ''} ${isPanning ? 'cursor-grabbing' : ''}`}
         onMouseDown={handlePanStart}
         onMouseMove={handlePanMove}
         onMouseUp={handlePanEnd}
@@ -673,8 +679,8 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Right Sidebar: Palette */}
-      <aside className="w-72 flex-shrink-0 border-l-4 border-black/20 p-6 flex flex-col z-40 bg-[#1a1a1a] overflow-y-auto">
+      {/* Right Sidebar: Palette - Hidden on mobile */}
+      <aside className="hidden md:flex w-72 flex-shrink-0 border-l-4 border-black/20 p-6 flex-col z-40 bg-[#1a1a1a] overflow-y-auto">
         <h2 className="pixel-font text-[10px] text-gray-500 mb-6 uppercase tracking-widest">
           COLOR KIT
         </h2>
@@ -749,9 +755,9 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* Bottom Action Bar - Only show when there are snapshots and sheet is visible */}
+      {/* Bottom Action Bar - Only show when there are snapshots and sheet is visible (desktop only) */}
       {localSnapshots.length > 0 && showBottomSheet && (
-        <div className="fixed bottom-0 left-48 right-72 bg-[#0a0a0a] border-t border-white/10 px-6 py-4 z-40">
+        <div className="hidden md:block fixed bottom-0 left-48 right-72 bg-[#0a0a0a] border-t border-white/10 px-6 py-4 z-40">
           {/* Close button */}
           <button
             onClick={() => setShowBottomSheet(false)}
@@ -814,16 +820,104 @@ export default function Home() {
         </div>
       )}
 
-      {/* Reopen button - shown when bottom sheet is closed but there are snapshots */}
+      {/* Reopen button - shown when bottom sheet is closed but there are snapshots (desktop only) */}
       {localSnapshots.length > 0 && !showBottomSheet && (
         <button
           onClick={() => setShowBottomSheet(true)}
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-[#262626] hover:bg-[#333] rounded-full pixel-font text-[9px] text-[#87CEEB] transition-colors border border-white/20 z-40 flex items-center gap-2"
+          className="hidden md:flex fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-[#262626] hover:bg-[#333] rounded-full pixel-font text-[9px] text-[#87CEEB] transition-colors border border-white/20 z-40 items-center gap-2"
         >
           <Camera className="w-3 h-3" />
           {localSnapshots.length} SNAPSHOT{localSnapshots.length > 1 ? 'S' : ''}
         </button>
       )}
+
+      {/* Mobile Bottom Bar - Color Palette and Actions */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[#1a1a1a] border-t border-white/10 p-3 z-50">
+        {/* Snapshot viewing mode on mobile */}
+        {selectedSnapshot ? (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSelectedSnapshot(null)}
+              className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded pixel-font text-[9px] text-white"
+            >
+              ← LIVE
+            </button>
+            <button
+              onClick={() => handleMint(selectedSnapshot)}
+              disabled={!isConnected || isMintProcessing}
+              className={`flex-1 px-3 py-2 rounded pixel-font text-[9px] ${
+                isMintProcessing
+                  ? 'bg-yellow-500/20 text-yellow-400'
+                  : mintState === 'success'
+                  ? 'bg-green-500/20 text-green-400'
+                  : 'bg-[#87CEEB]/20 text-[#87CEEB]'
+              }`}
+            >
+              {mintState === 'uploading' ? 'UPLOADING...' :
+               mintState === 'minting' ? 'MINTING...' :
+               mintState === 'success' ? 'MINTED!' :
+               'MINT NFT'}
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* Color palette row */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-2">
+              <div className="flex gap-1.5 flex-shrink-0">
+                {PALETTE.slice(1).map((color, i) => (
+                  <button
+                    key={i + 1}
+                    onClick={() => setSelectedColor(i + 1)}
+                    disabled={isProcessing}
+                    className={`w-8 h-8 rounded border-2 border-black flex-shrink-0 ${
+                      selectedColor === i + 1 ? 'ring-2 ring-[#87CEEB] ring-offset-1 ring-offset-[#1a1a1a]' : ''
+                    } ${isProcessing ? 'opacity-50' : ''}`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+              {/* Camera button */}
+              <button
+                onClick={handleCapture}
+                disabled={!!selectedSnapshot}
+                className="ml-auto flex-shrink-0 w-10 h-10 bg-[#262626] hover:bg-[#333] rounded flex items-center justify-center border border-white/10"
+              >
+                <Camera className="w-5 h-5 text-[#87CEEB]" />
+              </button>
+            </div>
+            {/* Snapshots row (if any) */}
+            {localSnapshots.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto pt-2 border-t border-white/10">
+                {localSnapshots.map((snap) => (
+                  <button
+                    key={snap.id}
+                    onClick={() => setSelectedSnapshot(snap)}
+                    className="flex-shrink-0 w-12 h-12 rounded border border-white/20 hover:border-[#87CEEB]"
+                  >
+                    <img
+                      src={snap.dataUrl}
+                      alt="Snapshot"
+                      className="w-full h-full rounded pixelated"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        {/* Status indicator */}
+        {!selectedSnapshot && (
+          <div className="text-center pt-2">
+            {!isConnected ? (
+              <span className="text-[8px] text-yellow-500 pixel-font">CONNECT WALLET</span>
+            ) : cooldownRemaining > 0 ? (
+              <span className="text-[8px] text-yellow-500 pixel-font">COOLDOWN: {cooldownRemaining}S</span>
+            ) : (
+              <span className="text-[8px] text-gray-500 pixel-font">TAP TO PLACE</span>
+            )}
+          </div>
+        )}
+      </div>
     </>
   );
 }
