@@ -1,8 +1,8 @@
 import { getAddress } from 'viem';
 
 // Deployed contract on Base Sepolia (with admin-adjustable cooldown)
-// https://sepolia.basescan.org/address/0xbdc4b69a82e4872b30d3410739e3398b67f4fa7d
-export const PIXELATE_ADDRESS = getAddress('0xbdc4b69a82e4872b30d3410739e3398b67f4fa7d');
+// https://sepolia.basescan.org/address/0x45EaAdBC19e512Fc7951d38192B7d3d3e5404669
+export const PIXELATE_ADDRESS = getAddress('0x45EaAdBC19e512Fc7951d38192B7d3d3e5404669');
 
 export const PIXELATE_ABI = [
   {
