@@ -4,7 +4,7 @@
  */
 
 // Root URL for your deployed Mini App
-const ROOT_URL = 'https://pixelate-delta.vercel.app/';
+const ROOT_URL = 'https://pixelate-delta.vercel.app';
 
 export const minikitConfig = {
   // Account association credentials - signed manifest proving app ownership
