@@ -142,3 +142,9 @@ body {
   image-rendering: -moz-crisp-edges;
   image-rendering: crisp-edges;
 }
+
+/* OnchainKit wallet dropdown z-index fix */
+[data-testid="ockWalletDropdown"],
+.ock-wallet-dropdown {
+  z-index: 9999 !important;
+}
