@@ -7,6 +7,7 @@ import { baseSepolia } from 'wagmi/chains';
 import { coinbaseWallet } from 'wagmi/connectors';
 import { OnchainKitProvider } from '@coinbase/onchainkit';
 import { MiniKitProvider } from '@coinbase/onchainkit/minikit';
+import sdk from '@farcaster/miniapp-sdk';
 
 const config = createConfig({
   chains: [baseSepolia],
@@ -26,6 +27,13 @@ const queryClient = new QueryClient();
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
+
+  // Signal MiniKit ready as soon as possible to dismiss splash screen
+  useEffect(() => {
+    sdk.actions.ready({}).catch(() => {
+      // Not in MiniKit context
+    });
+  }, []);
 
   useEffect(() => {
     setMounted(true);

@@ -228,7 +228,9 @@ export const PIXELATE_ABI = [
   },
 ] as const;
 
-export const PIXELATE_SNAPSHOTS_ADDRESS = '0x10da06ba8d3521103217d6a3c418c8903c3c38b0' as const;
+// Deployed PixelateSnapshotsUpgradeable on Base Sepolia (proxy address)
+// https://sepolia.basescan.org/address/0xC684D2464b60F93B44e0B68bF4d594a92aD72B5E
+export const PIXELATE_SNAPSHOTS_ADDRESS = getAddress('0xC684D2464b60F93B44e0B68bF4d594a92aD72B5E');
 
 export const PIXELATE_SNAPSHOTS_ABI = [
   // Constructor reference
@@ -247,97 +249,60 @@ export const PIXELATE_SNAPSHOTS_ABI = [
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
   },
-  // Snapshot struct via mapping
+  // Core function - mints NFT with on-chain SVG from pixel data (bytes format)
   {
     type: 'function',
-    name: 'snapshots',
-    inputs: [{ name: 'snapshotId', type: 'uint256' }],
+    name: 'mint',
+    inputs: [{ name: 'pixelData', type: 'bytes' }],
+    outputs: [{ name: 'tokenId', type: 'uint256' }],
+    stateMutability: 'payable',
+  },
+  // Get pixel data for a minted token
+  {
+    type: 'function',
+    name: 'getPixelData',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'bytes' }],
+    stateMutability: 'view',
+  },
+  // View functions
+  {
+    type: 'function',
+    name: 'getSnapshot',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
     outputs: [
       { name: 'blockNumber', type: 'uint256' },
       { name: 'timestamp', type: 'uint256' },
       { name: 'canvasHash', type: 'bytes32' },
-      { name: 'imageURI', type: 'string' },
       { name: 'creator', type: 'address' },
     ],
     stateMutability: 'view',
   },
   {
     type: 'function',
-    name: 'tokenToSnapshot',
-    inputs: [{ name: 'tokenId', type: 'uint256' }],
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'hashToSnapshot',
-    inputs: [{ name: 'canvasHash', type: 'bytes32' }],
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  // Core function - creates snapshot and mints NFT in one transaction
-  {
-    type: 'function',
-    name: 'createAndMint',
-    inputs: [{ name: 'imageURI', type: 'string' }],
-    outputs: [
-      { name: 'snapshotId', type: 'uint256' },
-      { name: 'tokenId', type: 'uint256' },
-    ],
-    stateMutability: 'payable',
-  },
-  // View functions
-  {
-    type: 'function',
-    name: 'getSnapshot',
-    inputs: [{ name: 'snapshotId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple',
-        components: [
-          { name: 'blockNumber', type: 'uint256' },
-          { name: 'timestamp', type: 'uint256' },
-          { name: 'canvasHash', type: 'bytes32' },
-          { name: 'imageURI', type: 'string' },
-          { name: 'creator', type: 'address' },
-        ],
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'getTokenSnapshot',
-    inputs: [{ name: 'tokenId', type: 'uint256' }],
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'getUserSnapshots',
+    name: 'getUserTokens',
     inputs: [{ name: 'user', type: 'address' }],
     outputs: [{ name: '', type: 'uint256[]' }],
     stateMutability: 'view',
   },
   {
     type: 'function',
-    name: 'getUserSnapshotCount',
-    inputs: [{ name: 'user', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'totalSnapshots',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     name: 'totalMinted',
     inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'generateSVG',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'hashToToken',
+    inputs: [{ name: 'canvasHash', type: 'bytes32' }],
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
   },
@@ -395,22 +360,13 @@ export const PIXELATE_SNAPSHOTS_ABI = [
   // Events
   {
     type: 'event',
-    name: 'SnapshotCreated',
+    name: 'SnapshotMinted',
     inputs: [
-      { name: 'snapshotId', type: 'uint256', indexed: true },
+      { name: 'tokenId', type: 'uint256', indexed: true },
       { name: 'canvasHash', type: 'bytes32', indexed: false },
       { name: 'creator', type: 'address', indexed: true },
       { name: 'blockNumber', type: 'uint256', indexed: false },
       { name: 'timestamp', type: 'uint256', indexed: false },
-    ],
-  },
-  {
-    type: 'event',
-    name: 'SnapshotMinted',
-    inputs: [
-      { name: 'tokenId', type: 'uint256', indexed: true },
-      { name: 'snapshotId', type: 'uint256', indexed: true },
-      { name: 'minter', type: 'address', indexed: true },
     ],
   },
   {
@@ -428,20 +384,7 @@ export const PIXELATE_SNAPSHOTS_ABI = [
     name: 'SnapshotAlreadyExists',
     inputs: [
       { name: 'canvasHash', type: 'bytes32' },
-      { name: 'existingSnapshotId', type: 'uint256' },
-    ],
-  },
-  {
-    type: 'error',
-    name: 'SnapshotDoesNotExist',
-    inputs: [{ name: 'snapshotId', type: 'uint256' }],
-  },
-  {
-    type: 'error',
-    name: 'OnlyCreatorCanMint',
-    inputs: [
-      { name: 'creator', type: 'address' },
-      { name: 'caller', type: 'address' },
+      { name: 'existingTokenId', type: 'uint256' },
     ],
   },
   {
@@ -451,11 +394,6 @@ export const PIXELATE_SNAPSHOTS_ABI = [
       { name: 'required', type: 'uint256' },
       { name: 'provided', type: 'uint256' },
     ],
-  },
-  {
-    type: 'error',
-    name: 'InvalidImageURI',
-    inputs: [],
   },
   {
     type: 'error',
@@ -471,12 +409,11 @@ export type Pixel = {
   lastPlacedAt: bigint;
 };
 
-// Type for snapshot data returned from contract
+// Type for snapshot data returned from contract (on-chain version - no imageURI needed)
 export type Snapshot = {
   blockNumber: bigint;
   timestamp: bigint;
   canvasHash: `0x${string}`;
-  imageURI: string;
   creator: `0x${string}`;
 };
 

@@ -5,10 +5,8 @@ import { useAccount, useReadContract, useWriteContract, useWaitForTransactionRec
 import { baseSepolia } from 'wagmi/chains';
 import { parseEther } from 'viem';
 import { Camera, X } from 'lucide-react';
-import sdk from '@farcaster/miniapp-sdk';
 import { PIXELATE_ADDRESS, PIXELATE_ABI, PIXELATE_SNAPSHOTS_ADDRESS, PIXELATE_SNAPSHOTS_ABI, type Pixel } from './contract';
 import { PALETTE, pixelsToBlob } from './utils';
-import { uploadToIPFS } from './utils/ipfs';
 
 const GRID_SIZE = 64;
 
@@ -30,12 +28,13 @@ const formatTimeAgo = (timestamp: bigint): string => {
 // Zero address for checking unplaced pixels
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-type MintState = 'idle' | 'uploading' | 'minting' | 'success' | 'error';
+type MintState = 'idle' | 'minting' | 'success' | 'error';
 
 // Local snapshot (stored in localStorage)
 interface LocalSnapshot {
   id: string;
   dataUrl: string;
+  pixels: number[]; // The 4096 pixel color indices for on-chain minting
   timestamp: number;
 }
 
@@ -72,12 +71,6 @@ export default function Home() {
     }
   }, [isConnected, chainId, switchChain]);
 
-  // Signal to MiniKit that the app is ready
-  useEffect(() => {
-    sdk.actions.ready({}).catch(() => {
-      // Not running in a mini app context, ignore
-    });
-  }, []);
 
   // Local pixel state for live updates
   const [localPixels, setLocalPixels] = useState<Pixel[] | null>(null);
@@ -285,22 +278,24 @@ export default function Home() {
     }
   }, [isSnapshotConfirmed, mintState, selectedSnapshot, resetSnapshot]);
 
-  // Handle mint errors
+  // Handle mint errors (including user rejection)
   useEffect(() => {
     if (snapshotWriteError) {
       console.error('[Pixelate] ❌ Mint error:', snapshotWriteError.message);
       setMintError(snapshotWriteError.message);
-      setMintState('error');
+      setMintState('idle'); // Reset to idle so user can try again
+      resetSnapshot();
     }
-  }, [snapshotWriteError]);
+  }, [snapshotWriteError, resetSnapshot]);
 
   useEffect(() => {
     if (snapshotTxError) {
       console.error('[Pixelate] ❌ Mint tx error:', snapshotTxError.message);
       setMintError(snapshotTxError.message);
-      setMintState('error');
+      setMintState('idle'); // Reset to idle so user can try again
+      resetSnapshot();
     }
-  }, [snapshotTxError]);
+  }, [snapshotTxError, resetSnapshot]);
 
   // Convert local state to color array for rendering
   const pixels = localPixels
@@ -434,23 +429,24 @@ export default function Home() {
   // Capture current canvas state as a local snapshot
   const handleCapture = async () => {
     console.log('[Pixelate] 📸 Capturing canvas...');
-    
+
     try {
       const blob = await pixelsToBlob(pixels);
       // Convert blob to base64 for localStorage persistence
       const reader = new FileReader();
       reader.onloadend = () => {
         const dataUrl = reader.result as string;
-        
+
         const snapshot: LocalSnapshot = {
           id: `snap-${Date.now()}`,
           dataUrl,
+          pixels: [...pixels], // Store pixel data for on-chain minting
           timestamp: Date.now(),
         };
-        
+
         setLocalSnapshots(prev => [snapshot, ...prev].slice(0, 10)); // Keep max 10 snapshots
         setShowBottomSheet(true); // Reopen bottom sheet when new snapshot is taken
-        console.log('[Pixelate] 📸 Snapshot saved locally');
+        console.log('[Pixelate] 📸 Snapshot saved locally with pixel data');
       };
       reader.readAsDataURL(blob);
     } catch (error) {
@@ -458,7 +454,7 @@ export default function Home() {
     }
   };
 
-  // Mint a selected snapshot as NFT
+  // Mint a snapshot as NFT (on-chain SVG - no IPFS needed!)
   const handleMint = async (snapshot: LocalSnapshot) => {
     if (!isConnected) {
       alert('Please connect your wallet first');
@@ -467,42 +463,22 @@ export default function Home() {
 
     if (mintState !== 'idle') return;
 
-    try {
-      // Step 1: Upload to IPFS
-      setMintState('uploading');
-      setMintError(null);
-      console.log('[Pixelate] ☁️ Uploading to IPFS...');
+    setMintState('minting');
+    setMintError(null);
 
-      // Convert dataUrl back to blob
-      const response = await fetch(snapshot.dataUrl);
-      const blob = await response.blob();
-      
-      const result = await uploadToIPFS(blob, `pixelate-${snapshot.timestamp}.png`);
+    const price = mintPrice ?? BigInt(0);
+    console.log('[Pixelate] 🎨 Minting on-chain NFT with', snapshot.pixels.length, 'pixels...');
 
-      if (!result.success || !result.ipfsUrl) {
-        throw new Error(result.error || 'Failed to upload to IPFS');
-      }
+    // Convert pixel array to bytes (hex string) for contract
+    const pixelBytes = `0x${snapshot.pixels.map(p => p.toString(16).padStart(2, '0')).join('')}` as `0x${string}`;
 
-      console.log('[Pixelate] ☁️ Uploaded to IPFS:', result.ipfsHash);
-
-      // Step 2: Mint NFT
-      setMintState('minting');
-      console.log('[Pixelate] 🎨 Minting snapshot NFT...');
-
-      const price = mintPrice ?? BigInt(0);
-
-      writeSnapshot({
-        address: PIXELATE_SNAPSHOTS_ADDRESS,
-        abi: PIXELATE_SNAPSHOTS_ABI,
-        functionName: 'createAndMint',
-        args: [result.ipfsUrl],
-        value: price,
-      });
-    } catch (error) {
-      console.error('[Pixelate] ❌ Mint error:', error);
-      setMintError(error instanceof Error ? error.message : 'Unknown error');
-      setMintState('error');
-    }
+    writeSnapshot({
+      address: PIXELATE_SNAPSHOTS_ADDRESS,
+      abi: PIXELATE_SNAPSHOTS_ABI,
+      functionName: 'mint',
+      args: [pixelBytes],
+      value: price,
+    });
   };
 
   const resetMintState = () => {
@@ -586,8 +562,8 @@ export default function Home() {
 
             {/* MINT NFT button */}
             <button
-              onClick={() => handleMint(selectedSnapshot)}
-              disabled={!isConnected || isMintProcessing}
+              onClick={() => selectedSnapshot && handleMint(selectedSnapshot)}
+              disabled={!isConnected || isMintProcessing || !selectedSnapshot}
               className={`w-full px-4 py-3 rounded pixel-font text-[10px] transition-colors flex items-center justify-center gap-2 ${
                 isMintProcessing
                   ? 'bg-yellow-500/20 text-yellow-400 cursor-wait'
@@ -596,8 +572,7 @@ export default function Home() {
                   : 'bg-[#87CEEB]/20 hover:bg-[#87CEEB]/30 text-[#87CEEB]'
               } ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              {mintState === 'uploading' ? 'UPLOADING...' :
-               mintState === 'minting' ? 'MINTING...' :
+              {mintState === 'minting' ? 'MINTING...' :
                mintState === 'success' ? 'MINTED!' :
                'MINT NFT'}
             </button>
@@ -843,8 +818,8 @@ export default function Home() {
               ← LIVE
             </button>
             <button
-              onClick={() => handleMint(selectedSnapshot)}
-              disabled={!isConnected || isMintProcessing}
+              onClick={() => selectedSnapshot && handleMint(selectedSnapshot)}
+              disabled={!isConnected || isMintProcessing || !selectedSnapshot}
               className={`flex-1 px-3 py-2 rounded pixel-font text-[9px] ${
                 isMintProcessing
                   ? 'bg-yellow-500/20 text-yellow-400'
@@ -853,8 +828,7 @@ export default function Home() {
                   : 'bg-[#87CEEB]/20 text-[#87CEEB]'
               }`}
             >
-              {mintState === 'uploading' ? 'UPLOADING...' :
-               mintState === 'minting' ? 'MINTING...' :
+              {mintState === 'minting' ? 'MINTING...' :
                mintState === 'success' ? 'MINTED!' :
                'MINT NFT'}
             </button>
